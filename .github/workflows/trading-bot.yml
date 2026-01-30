@@ -13,7 +13,7 @@ on:
         default: 'true'
   
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'src/**'
       - 'requirements.txt'
