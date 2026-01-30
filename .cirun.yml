@@ -13,11 +13,11 @@ runners:
     labels:
       - "cirun-aws"
     
-    # Use spot instances for 70% cost savings
-    preemptible: true
+    # Use on-demand instances (more reliable than spot)
+    preemptible: false
     
-    # Auto-terminate quickly to save costs
-    idle_time: 45
+    # Keep runner alive for 10 minutes between jobs (matches your cron schedule)
+    idle_time: 600  # 10 minutes - keeps runner warm for frequent runs
     
     # Use same region as your S3 bucket for faster sync
     region: "us-east-2"
