@@ -28,6 +28,13 @@ jobs:
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
+      
+      - name: ☁️ Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
         
       - name: 🐍 Set up Python 3.11
         uses: actions/setup-python@v5
@@ -45,10 +52,6 @@ jobs:
           mkdir -p data logs
       
       - name: ☁️ Download state from S3
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         run: |
           echo "📥 Downloading state files from S3..."
           aws s3 sync s3://${{ secrets.AWS_S3_BUCKET }}/state/ data/ \
@@ -75,10 +78,6 @@ jobs:
       
       - name: ☁️ Upload state to S3
         if: always()  # Always upload, even if bot fails
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         run: |
           echo "📤 Uploading state files to S3..."
           aws s3 sync data/ s3://${{ secrets.AWS_S3_BUCKET }}/state/ \
