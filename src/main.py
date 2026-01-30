@@ -125,33 +125,41 @@ class SignalBot:
             # Check market regime
             regime = RegimeDetector.detect_regime(data['primary'])
             
+            # Get score threshold based on regime
+            account_state = self.risk_manager.get_account_state()
+            threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
+            
             if not RegimeDetector.should_trade_regime(regime):
-                logger.info(f"{symbol}: ❌ Unfavorable regime ({regime})")
+                logger.info(f"{symbol}: ❌ Unfavorable regime ({regime}) | Min threshold: {threshold}")
                 return
             
-            logger.info(f"{symbol}: ✓ Regime check passed ({regime})")
+            logger.info(f"{symbol}: ✓ Regime check passed ({regime}) | Min threshold: {threshold}")
             
             # Check for long entry
             long_check = EntryLogic.check_long_entry(data)
             if long_check['valid']:
-                logger.info(f"{symbol}: ✅ LONG entry conditions met - {long_check['reason']}")
                 # Calculate score with breakdown
                 score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
+                logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
                 self._create_signal_with_score(symbol, 'long', data, long_check['reason'], score, breakdown)
                 return
             else:
-                logger.info(f"{symbol}: ❌ Long entry failed - {long_check['reason']}")
+                # Calculate score even when rejected to show why
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
+                logger.info(f"{symbol}: ❌ Long entry failed | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
             
             # Check for short entry
             short_check = EntryLogic.check_short_entry(data)
             if short_check['valid']:
-                logger.info(f"{symbol}: ✅ SHORT entry conditions met - {short_check['reason']}")
                 # Calculate score with breakdown
                 score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
+                logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
                 self._create_signal_with_score(symbol, 'short', data, short_check['reason'], score, breakdown)
                 return
             else:
-                logger.info(f"{symbol}: ❌ Short entry failed - {short_check['reason']}")
+                # Calculate score even when rejected to show why
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
+                logger.info(f"{symbol}: ❌ Short entry failed | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
             
             logger.debug(f"{symbol}: No entry conditions met")
             
