@@ -1,0 +1,11 @@
+{
+  "equity": 2000.0,
+  "daily_loss": 0.0,
+  "weekly_loss": 0.0,
+  "consecutive_losses": 0,
+  "trading_enabled": true,
+  "cooldown_until": null,
+  "last_reset_date": "2026-01-29",
+  "last_weekly_reset": "2026-01-29",
+  "last_updated": "2026-01-29T21:00:06.184216"
+}

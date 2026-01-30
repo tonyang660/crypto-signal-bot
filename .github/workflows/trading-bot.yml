@@ -1,0 +1,110 @@
+name: Trading Signal Bot
+
+on:
+  schedule:
+    # Run every 5 minutes (GitHub Actions has 5-min granularity)
+    - cron: '*/5 * * * *'
+  
+  workflow_dispatch:  # Allow manual trigger from Actions tab
+    inputs:
+      force_scan:
+        description: 'Force a market scan'
+        required: false
+        default: 'true'
+  
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+
+jobs:
+  run-signal-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 📦 Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 📁 Create directories
+        run: |
+          mkdir -p data logs
+      
+      - name: ☁️ Download state from S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          echo "📥 Downloading state files from S3..."
+          aws s3 sync s3://${{ secrets.AWS_S3_BUCKET }}/state/ data/ \
+            --exclude "*" \
+            --include "*.json" \
+            --no-progress || echo "⚠️ No existing state found (first run?)"
+          
+          # List downloaded files
+          ls -lah data/ || true
+      
+      - name: 🤖 Run signal bot
+        env:
+          BITGET_API_KEY: ${{ secrets.BITGET_API_KEY }}
+          BITGET_SECRET_KEY: ${{ secrets.BITGET_SECRET_KEY }}
+          BITGET_PASSPHRASE: ${{ secrets.BITGET_PASSPHRASE }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          INITIAL_CAPITAL: ${{ vars.INITIAL_CAPITAL }}
+          RISK_PER_TRADE: ${{ vars.RISK_PER_TRADE }}
+          MAX_DAILY_LOSS: ${{ vars.MAX_DAILY_LOSS }}
+          MAX_WEEKLY_LOSS: ${{ vars.MAX_WEEKLY_LOSS }}
+        run: |
+          echo "🚀 Starting signal bot scan..."
+          python -m src.main --single-run
+      
+      - name: ☁️ Upload state to S3
+        if: always()  # Always upload, even if bot fails
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          echo "📤 Uploading state files to S3..."
+          aws s3 sync data/ s3://${{ secrets.AWS_S3_BUCKET }}/state/ \
+            --exclude "*" \
+            --include "*.json" \
+            --no-progress
+          
+          # Also backup to timestamped folder (weekly snapshots)
+          if [ "$(date +%u)" -eq 1 ]; then
+            echo "📸 Creating weekly backup..."
+            aws s3 sync data/ s3://${{ secrets.AWS_S3_BUCKET }}/backups/$(date +%Y-%m-%d)/ \
+              --exclude "*" \
+              --include "*.json" \
+              --no-progress
+          fi
+      
+      - name: 📊 Upload logs as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-logs-${{ github.run_number }}
+          path: logs/
+          retention-days: 7
+      
+      - name: ⚠️ Notify on failure
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d "{\"content\":\"⚠️ **Trading Bot Workflow Failed**\n\nRun: ${{ github.run_number }}\nTime: $(date -u)\n[View Logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \
+               ${{ secrets.DISCORD_WEBHOOK_URL }}

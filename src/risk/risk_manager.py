@@ -20,6 +20,10 @@ class RiskManager:
         
         # Load persisted state
         self._load_state()
+        
+        # Create initial file if it doesn't exist
+        if not Path(Config.PERFORMANCE_FILE).exists():
+            self._save_state()
     
     def can_trade(self) -> Tuple[bool, str]:
         """

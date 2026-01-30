@@ -1,0 +1,46 @@
+name: Manual Signal Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - view_active_signals
+          - close_signal
+      symbol:
+        description: 'Symbol to close (e.g., BTCUSDT)'
+        required: false
+        type: string
+
+jobs:
+  signal-control:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install boto3
+      
+      - name: Download state
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          mkdir -p data
+          aws s3 cp s3://${{ secrets.AWS_S3_BUCKET }}/state/signals_active.json data/ || true
+      
+      - name: View or modify signals
+        run: |
+          if [ "${{ github.event.inputs.action }}" == "view_active_signals" ]; then
+            echo "📋 Active Signals:"
+            cat data/signals_active.json | python -m json.tool || echo "No active signals"
+          fi

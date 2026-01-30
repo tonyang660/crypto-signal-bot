@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from loguru import logger
 from src.core.config import Config
@@ -25,6 +25,12 @@ class SignalTracker:
         # Load existing signals
         self._load_active_signals()
         self._load_history()
+        
+        # Create initial files if they don't exist
+        if not Path(Config.ACTIVE_SIGNALS_FILE).exists():
+            self._save_active_signals()
+        if not Path(Config.HISTORY_SIGNALS_FILE).exists():
+            self._save_history()
     
     def can_create_signal(self, symbol: str) -> Tuple[bool, str]:
         """

@@ -100,7 +100,7 @@ class SignalBot:
                     continue
             
             # Log summary
-            active_count = len(self.signal_tracker.get_active_signals())
+            active_count = len(self.signal_tracker.get_all_active_signals())
             logger.info(f"✓ Scan complete | Active signals: {active_count}")
             
         except Exception as e:
@@ -342,5 +342,21 @@ Daily Loss: ${risk_stats['daily_loss']:+.2f}
 
 # Entry point
 if __name__ == "__main__":
+    import sys
+    
     bot = SignalBot()
-    bot.run()
+    
+    if '--single-run' in sys.argv:
+        # Run once then exit (for GitHub Actions)
+        logger.info("🔄 Running in single-scan mode (GitHub Actions)")
+        bot.scan_markets()
+        
+        # Check if daily report should be sent (at midnight UTC)
+        current_hour = datetime.now().hour
+        if current_hour == 0:
+            bot.send_daily_report()
+        
+        logger.info("✅ Single scan complete, exiting")
+    else:
+        # Normal continuous mode
+        bot.run()

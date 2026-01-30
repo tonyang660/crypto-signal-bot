@@ -1,0 +1,184 @@
+2026-01-29 20:53:22 | INFO     | ======================================================================
+2026-01-29 20:53:22 | INFO     | 🚀 BitGet Futures Signal Bot Starting...
+2026-01-29 20:53:22 | INFO     | ======================================================================
+2026-01-29 20:53:23 | INFO     | ✓ Connected to BitGet - 1353 markets loaded
+2026-01-29 20:53:23 | INFO     | ✓ All components initialized
+2026-01-29 20:53:24 | INFO     | 🔄 Running in single-scan mode (GitHub Actions)
+2026-01-29 20:53:24 | INFO     | ======================================================================
+2026-01-29 20:53:24 | INFO     | 🔍 Scanning markets at 2026-01-29 20:53:24
+2026-01-29 20:53:24 | INFO     | ======================================================================
+2026-01-29 20:53:24 | DEBUG    | Fetching fresh data for BTCUSDT_4h
+2026-01-29 20:53:24 | DEBUG    | Fetched 200 candles for BTCUSDT 4h
+2026-01-29 20:53:24 | DEBUG    | Fetching fresh data for BTCUSDT_15m
+2026-01-29 20:53:24 | DEBUG    | Fetched 500 candles for BTCUSDT 15m
+2026-01-29 20:53:24 | DEBUG    | Fetching fresh data for BTCUSDT_5m
+2026-01-29 20:53:24 | DEBUG    | Fetched 200 candles for BTCUSDT 5m
+2026-01-29 20:53:24 | DEBUG    | BTCUSDT: No entry conditions met
+2026-01-29 20:53:24 | DEBUG    | Fetching fresh data for ETHUSDT_4h
+2026-01-29 20:53:24 | DEBUG    | Fetched 200 candles for ETHUSDT 4h
+2026-01-29 20:53:24 | DEBUG    | Fetching fresh data for ETHUSDT_15m
+2026-01-29 20:53:25 | DEBUG    | Fetched 500 candles for ETHUSDT 15m
+2026-01-29 20:53:25 | DEBUG    | Fetching fresh data for ETHUSDT_5m
+2026-01-29 20:53:25 | DEBUG    | Fetched 200 candles for ETHUSDT 5m
+2026-01-29 20:53:25 | DEBUG    | ETHUSDT: No entry conditions met
+2026-01-29 20:53:25 | DEBUG    | Fetching fresh data for SOLUSDT_4h
+2026-01-29 20:53:25 | DEBUG    | Fetched 200 candles for SOLUSDT 4h
+2026-01-29 20:53:25 | DEBUG    | Fetching fresh data for SOLUSDT_15m
+2026-01-29 20:53:25 | DEBUG    | Fetched 500 candles for SOLUSDT 15m
+2026-01-29 20:53:25 | DEBUG    | Fetching fresh data for SOLUSDT_5m
+2026-01-29 20:53:25 | DEBUG    | Fetched 200 candles for SOLUSDT 5m
+2026-01-29 20:53:25 | DEBUG    | SOLUSDT: No entry conditions met
+2026-01-29 20:53:25 | DEBUG    | Fetching fresh data for XRPUSDT_4h
+2026-01-29 20:53:26 | DEBUG    | Fetched 200 candles for XRPUSDT 4h
+2026-01-29 20:53:26 | DEBUG    | Fetching fresh data for XRPUSDT_15m
+2026-01-29 20:53:26 | DEBUG    | Fetched 500 candles for XRPUSDT 15m
+2026-01-29 20:53:26 | DEBUG    | Fetching fresh data for XRPUSDT_5m
+2026-01-29 20:53:26 | DEBUG    | Fetched 200 candles for XRPUSDT 5m
+2026-01-29 20:53:26 | DEBUG    | XRPUSDT: Unfavorable regime (choppy)
+2026-01-29 20:53:26 | DEBUG    | Fetching fresh data for BNBUSDT_4h
+2026-01-29 20:53:26 | DEBUG    | Fetched 200 candles for BNBUSDT 4h
+2026-01-29 20:53:26 | DEBUG    | Fetching fresh data for BNBUSDT_15m
+2026-01-29 20:53:27 | DEBUG    | Fetched 500 candles for BNBUSDT 15m
+2026-01-29 20:53:27 | DEBUG    | Fetching fresh data for BNBUSDT_5m
+2026-01-29 20:53:27 | DEBUG    | Fetched 200 candles for BNBUSDT 5m
+2026-01-29 20:53:27 | DEBUG    | BNBUSDT: No entry conditions met
+2026-01-29 20:53:27 | ERROR    | Error in scan_markets: 'SignalTracker' object has no attribute 'get_active_signals'
+2026-01-29 20:53:27 | INFO     | ✅ Single scan complete, exiting
+2026-01-29 20:55:14 | INFO     | ======================================================================
+2026-01-29 20:55:14 | INFO     | 🚀 BitGet Futures Signal Bot Starting...
+2026-01-29 20:55:14 | INFO     | ======================================================================
+2026-01-29 20:55:16 | INFO     | ✓ Connected to BitGet - 1353 markets loaded
+2026-01-29 20:55:16 | INFO     | ✓ All components initialized
+2026-01-29 20:55:16 | INFO     | 🔄 Running in single-scan mode (GitHub Actions)
+2026-01-29 20:55:16 | INFO     | ======================================================================
+2026-01-29 20:55:16 | INFO     | 🔍 Scanning markets at 2026-01-29 20:55:16
+2026-01-29 20:55:16 | INFO     | ======================================================================
+2026-01-29 20:55:16 | DEBUG    | Fetching fresh data for BTCUSDT_4h
+2026-01-29 20:55:16 | DEBUG    | Fetched 200 candles for BTCUSDT 4h
+2026-01-29 20:55:16 | DEBUG    | Fetching fresh data for BTCUSDT_15m
+2026-01-29 20:55:16 | DEBUG    | Fetched 500 candles for BTCUSDT 15m
+2026-01-29 20:55:16 | DEBUG    | Fetching fresh data for BTCUSDT_5m
+2026-01-29 20:55:17 | DEBUG    | Fetched 200 candles for BTCUSDT 5m
+2026-01-29 20:55:17 | DEBUG    | BTCUSDT: No entry conditions met
+2026-01-29 20:55:17 | DEBUG    | Fetching fresh data for ETHUSDT_4h
+2026-01-29 20:55:17 | DEBUG    | Fetched 200 candles for ETHUSDT 4h
+2026-01-29 20:55:17 | DEBUG    | Fetching fresh data for ETHUSDT_15m
+2026-01-29 20:55:17 | DEBUG    | Fetched 500 candles for ETHUSDT 15m
+2026-01-29 20:55:17 | DEBUG    | Fetching fresh data for ETHUSDT_5m
+2026-01-29 20:55:17 | DEBUG    | Fetched 200 candles for ETHUSDT 5m
+2026-01-29 20:55:17 | DEBUG    | ETHUSDT: No entry conditions met
+2026-01-29 20:55:17 | DEBUG    | Fetching fresh data for SOLUSDT_4h
+2026-01-29 20:55:17 | DEBUG    | Fetched 200 candles for SOLUSDT 4h
+2026-01-29 20:55:17 | DEBUG    | Fetching fresh data for SOLUSDT_15m
+2026-01-29 20:55:18 | DEBUG    | Fetched 500 candles for SOLUSDT 15m
+2026-01-29 20:55:18 | DEBUG    | Fetching fresh data for SOLUSDT_5m
+2026-01-29 20:55:18 | DEBUG    | Fetched 200 candles for SOLUSDT 5m
+2026-01-29 20:55:18 | DEBUG    | SOLUSDT: No entry conditions met
+2026-01-29 20:55:18 | DEBUG    | Fetching fresh data for XRPUSDT_4h
+2026-01-29 20:55:18 | DEBUG    | Fetched 200 candles for XRPUSDT 4h
+2026-01-29 20:55:18 | DEBUG    | Fetching fresh data for XRPUSDT_15m
+2026-01-29 20:55:18 | DEBUG    | Fetched 500 candles for XRPUSDT 15m
+2026-01-29 20:55:18 | DEBUG    | Fetching fresh data for XRPUSDT_5m
+2026-01-29 20:55:19 | DEBUG    | Fetched 200 candles for XRPUSDT 5m
+2026-01-29 20:55:19 | DEBUG    | XRPUSDT: Unfavorable regime (choppy)
+2026-01-29 20:55:19 | DEBUG    | Fetching fresh data for BNBUSDT_4h
+2026-01-29 20:55:19 | DEBUG    | Fetched 200 candles for BNBUSDT 4h
+2026-01-29 20:55:19 | DEBUG    | Fetching fresh data for BNBUSDT_15m
+2026-01-29 20:55:19 | DEBUG    | Fetched 500 candles for BNBUSDT 15m
+2026-01-29 20:55:19 | DEBUG    | Fetching fresh data for BNBUSDT_5m
+2026-01-29 20:55:19 | DEBUG    | Fetched 200 candles for BNBUSDT 5m
+2026-01-29 20:55:19 | DEBUG    | BNBUSDT: No entry conditions met
+2026-01-29 20:55:19 | INFO     | ✓ Scan complete | Active signals: 0
+2026-01-29 20:55:19 | INFO     | ✅ Single scan complete, exiting
+2026-01-29 20:57:40 | INFO     | ======================================================================
+2026-01-29 20:57:40 | INFO     | 🚀 BitGet Futures Signal Bot Starting...
+2026-01-29 20:57:40 | INFO     | ======================================================================
+2026-01-29 20:57:42 | INFO     | ✓ Connected to BitGet - 1353 markets loaded
+2026-01-29 20:57:42 | INFO     | ✓ All components initialized
+2026-01-29 20:57:42 | INFO     | 🔄 Running in single-scan mode (GitHub Actions)
+2026-01-29 20:57:42 | INFO     | ======================================================================
+2026-01-29 20:57:42 | INFO     | 🔍 Scanning markets at 2026-01-29 20:57:42
+2026-01-29 20:57:42 | INFO     | ======================================================================
+2026-01-29 20:57:42 | DEBUG    | Fetching fresh data for BTCUSDT_4h
+2026-01-29 20:57:42 | DEBUG    | Fetched 200 candles for BTCUSDT 4h
+2026-01-29 20:57:42 | DEBUG    | Fetching fresh data for BTCUSDT_15m
+2026-01-29 20:57:42 | DEBUG    | Fetched 500 candles for BTCUSDT 15m
+2026-01-29 20:57:42 | DEBUG    | Fetching fresh data for BTCUSDT_5m
+2026-01-29 20:57:43 | DEBUG    | Fetched 200 candles for BTCUSDT 5m
+2026-01-29 20:57:43 | DEBUG    | BTCUSDT: No entry conditions met
+2026-01-29 20:57:43 | DEBUG    | Fetching fresh data for ETHUSDT_4h
+2026-01-29 20:57:43 | DEBUG    | Fetched 200 candles for ETHUSDT 4h
+2026-01-29 20:57:43 | DEBUG    | Fetching fresh data for ETHUSDT_15m
+2026-01-29 20:57:43 | DEBUG    | Fetched 500 candles for ETHUSDT 15m
+2026-01-29 20:57:43 | DEBUG    | Fetching fresh data for ETHUSDT_5m
+2026-01-29 20:57:43 | DEBUG    | Fetched 200 candles for ETHUSDT 5m
+2026-01-29 20:57:43 | DEBUG    | ETHUSDT: No entry conditions met
+2026-01-29 20:57:43 | DEBUG    | Fetching fresh data for SOLUSDT_4h
+2026-01-29 20:57:43 | DEBUG    | Fetched 200 candles for SOLUSDT 4h
+2026-01-29 20:57:43 | DEBUG    | Fetching fresh data for SOLUSDT_15m
+2026-01-29 20:57:44 | DEBUG    | Fetched 500 candles for SOLUSDT 15m
+2026-01-29 20:57:44 | DEBUG    | Fetching fresh data for SOLUSDT_5m
+2026-01-29 20:57:44 | DEBUG    | Fetched 200 candles for SOLUSDT 5m
+2026-01-29 20:57:44 | DEBUG    | SOLUSDT: No entry conditions met
+2026-01-29 20:57:44 | DEBUG    | Fetching fresh data for XRPUSDT_4h
+2026-01-29 20:57:44 | DEBUG    | Fetched 200 candles for XRPUSDT 4h
+2026-01-29 20:57:44 | DEBUG    | Fetching fresh data for XRPUSDT_15m
+2026-01-29 20:57:44 | DEBUG    | Fetched 500 candles for XRPUSDT 15m
+2026-01-29 20:57:44 | DEBUG    | Fetching fresh data for XRPUSDT_5m
+2026-01-29 20:57:45 | DEBUG    | Fetched 200 candles for XRPUSDT 5m
+2026-01-29 20:57:45 | DEBUG    | XRPUSDT: No entry conditions met
+2026-01-29 20:57:45 | DEBUG    | Fetching fresh data for BNBUSDT_4h
+2026-01-29 20:57:45 | DEBUG    | Fetched 200 candles for BNBUSDT 4h
+2026-01-29 20:57:45 | DEBUG    | Fetching fresh data for BNBUSDT_15m
+2026-01-29 20:57:45 | DEBUG    | Fetched 500 candles for BNBUSDT 15m
+2026-01-29 20:57:45 | DEBUG    | Fetching fresh data for BNBUSDT_5m
+2026-01-29 20:57:45 | DEBUG    | Fetched 200 candles for BNBUSDT 5m
+2026-01-29 20:57:45 | DEBUG    | BNBUSDT: No entry conditions met
+2026-01-29 20:57:45 | INFO     | ✓ Scan complete | Active signals: 0
+2026-01-29 20:57:45 | INFO     | ✅ Single scan complete, exiting
+2026-01-29 21:00:04 | INFO     | ======================================================================
+2026-01-29 21:00:04 | INFO     | 🚀 BitGet Futures Signal Bot Starting...
+2026-01-29 21:00:04 | INFO     | ======================================================================
+2026-01-29 21:00:06 | INFO     | ✓ Connected to BitGet - 1353 markets loaded
+2026-01-29 21:00:06 | INFO     | ✓ All components initialized
+2026-01-29 21:00:06 | INFO     | 🔄 Running in single-scan mode (GitHub Actions)
+2026-01-29 21:00:06 | INFO     | ======================================================================
+2026-01-29 21:00:06 | INFO     | 🔍 Scanning markets at 2026-01-29 21:00:06
+2026-01-29 21:00:06 | INFO     | ======================================================================
+2026-01-29 21:00:06 | DEBUG    | Fetching fresh data for BTCUSDT_4h
+2026-01-29 21:00:06 | DEBUG    | Fetched 200 candles for BTCUSDT 4h
+2026-01-29 21:00:06 | DEBUG    | Fetching fresh data for BTCUSDT_15m
+2026-01-29 21:00:07 | DEBUG    | Fetched 500 candles for BTCUSDT 15m
+2026-01-29 21:00:07 | DEBUG    | Fetching fresh data for BTCUSDT_5m
+2026-01-29 21:00:07 | DEBUG    | Fetched 200 candles for BTCUSDT 5m
+2026-01-29 21:00:07 | DEBUG    | BTCUSDT: No entry conditions met
+2026-01-29 21:00:07 | DEBUG    | Fetching fresh data for ETHUSDT_4h
+2026-01-29 21:00:07 | DEBUG    | Fetched 200 candles for ETHUSDT 4h
+2026-01-29 21:00:07 | DEBUG    | Fetching fresh data for ETHUSDT_15m
+2026-01-29 21:00:07 | DEBUG    | Fetched 500 candles for ETHUSDT 15m
+2026-01-29 21:00:07 | DEBUG    | Fetching fresh data for ETHUSDT_5m
+2026-01-29 21:00:07 | DEBUG    | Fetched 200 candles for ETHUSDT 5m
+2026-01-29 21:00:07 | DEBUG    | ETHUSDT: No entry conditions met
+2026-01-29 21:00:07 | DEBUG    | Fetching fresh data for SOLUSDT_4h
+2026-01-29 21:00:08 | DEBUG    | Fetched 200 candles for SOLUSDT 4h
+2026-01-29 21:00:08 | DEBUG    | Fetching fresh data for SOLUSDT_15m
+2026-01-29 21:00:08 | DEBUG    | Fetched 500 candles for SOLUSDT 15m
+2026-01-29 21:00:08 | DEBUG    | Fetching fresh data for SOLUSDT_5m
+2026-01-29 21:00:08 | DEBUG    | Fetched 200 candles for SOLUSDT 5m
+2026-01-29 21:00:08 | DEBUG    | SOLUSDT: No entry conditions met
+2026-01-29 21:00:08 | DEBUG    | Fetching fresh data for XRPUSDT_4h
+2026-01-29 21:00:08 | DEBUG    | Fetched 200 candles for XRPUSDT 4h
+2026-01-29 21:00:08 | DEBUG    | Fetching fresh data for XRPUSDT_15m
+2026-01-29 21:00:09 | DEBUG    | Fetched 500 candles for XRPUSDT 15m
+2026-01-29 21:00:09 | DEBUG    | Fetching fresh data for XRPUSDT_5m
+2026-01-29 21:00:09 | DEBUG    | Fetched 200 candles for XRPUSDT 5m
+2026-01-29 21:00:09 | DEBUG    | XRPUSDT: No entry conditions met
+2026-01-29 21:00:09 | DEBUG    | Fetching fresh data for BNBUSDT_4h
+2026-01-29 21:00:09 | DEBUG    | Fetched 200 candles for BNBUSDT 4h
+2026-01-29 21:00:09 | DEBUG    | Fetching fresh data for BNBUSDT_15m
+2026-01-29 21:00:09 | DEBUG    | Fetched 500 candles for BNBUSDT 15m
+2026-01-29 21:00:09 | DEBUG    | Fetching fresh data for BNBUSDT_5m
+2026-01-29 21:00:09 | DEBUG    | Fetched 200 candles for BNBUSDT 5m
+2026-01-29 21:00:09 | DEBUG    | BNBUSDT: No entry conditions met
+2026-01-29 21:00:09 | INFO     | ✓ Scan complete | Active signals: 0
+2026-01-29 21:00:09 | INFO     | ✅ Single scan complete, exiting
