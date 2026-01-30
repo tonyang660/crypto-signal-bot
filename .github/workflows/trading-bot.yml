@@ -23,6 +23,7 @@ jobs:
   run-signal-bot:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: signal-bot  # Use the environment you created
     
     steps:
       - name: 📥 Checkout code
