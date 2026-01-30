@@ -1,0 +1,286 @@
+import requests
+from datetime import datetime
+from typing import Dict, Optional
+from loguru import logger
+from src.core.config import Config
+
+class DiscordNotifier:
+    """Send trading signals and alerts via Discord webhook"""
+    
+    def __init__(self):
+        self.webhook_url = Config.DISCORD_WEBHOOK_URL
+    
+    def send_new_signal(
+        self,
+        symbol: str,
+        direction: str,
+        entry_price: float,
+        stop_loss: float,
+        take_profits: Dict,
+        position_size: Dict,
+        score: int,
+        reason: str
+    ) -> bool:
+        """Send new signal notification"""
+        try:
+            # Calculate risk/reward
+            risk = abs(entry_price - stop_loss)
+            tp1_reward = abs(take_profits['tp1']['price'] - entry_price)
+            rr_ratio = tp1_reward / risk if risk > 0 else 0
+            
+            # Determine color based on direction
+            color = 0x00FF00 if direction == 'long' else 0xFF0000  # Green for long, Red for short
+            
+            # Create embed
+            embed = {
+                "title": f"🚀 NEW {direction.upper()} SIGNAL - {symbol}",
+                "color": color,
+                "fields": [
+                    {
+                        "name": "📊 Signal Quality",
+                        "value": f"Score: **{score}/100** ({self._get_grade(score)})",
+                        "inline": True
+                    },
+                    {
+                        "name": "💰 Position Size",
+                        "value": f"${position_size['notional_usd']:.2f} ({position_size['leverage']:.1f}×)",
+                        "inline": True
+                    },
+                    {
+                        "name": "📍 Entry",
+                        "value": f"${entry_price:,.2f}",
+                        "inline": False
+                    },
+                    {
+                        "name": "🛑 Stop Loss",
+                        "value": f"${stop_loss:,.2f} (-{position_size['stop_distance_pct']:.2f}%)",
+                        "inline": True
+                    },
+                    {
+                        "name": "⚖️ Risk/Reward",
+                        "value": f"{rr_ratio:.2f}R",
+                        "inline": True
+                    },
+                    {
+                        "name": "🎯 Take Profit 1",
+                        "value": f"${take_profits['tp1']['price']:,.2f} (Close {take_profits['tp1']['close_percent']}%)",
+                        "inline": False
+                    },
+                    {
+                        "name": "🎯 Take Profit 2",
+                        "value": f"${take_profits['tp2']['price']:,.2f} (Close {take_profits['tp2']['close_percent']}%)",
+                        "inline": True
+                    },
+                    {
+                        "name": "🎯 Take Profit 3",
+                        "value": f"${take_profits['tp3']['price']:,.2f} (Trail {take_profits['tp3']['close_percent']}%)",
+                        "inline": True
+                    },
+                    {
+                        "name": "📝 Entry Reason",
+                        "value": f"```{reason}```",
+                        "inline": False
+                    }
+                ],
+                "footer": {
+                    "text": f"BitGet Futures • Risk: ${position_size['risk_usd']:.2f}"
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            payload = {
+                "embeds": [embed]
+            }
+            
+            response = requests.post(self.webhook_url, json=payload)
+            
+            if response.status_code == 204:
+                logger.info(f"✅ Discord notification sent for {symbol}")
+                return True
+            else:
+                logger.error(f"Failed to send Discord notification: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error sending Discord notification: {e}")
+            return False
+    
+    def send_tp_hit(
+        self,
+        symbol: str,
+        direction: str,
+        tp_level: str,
+        price: float,
+        pnl: float,
+        total_pnl: float,
+        remaining_percent: int
+    ) -> bool:
+        """Send TP hit notification"""
+        try:
+            embed = {
+                "title": f"🎯 {tp_level.upper()} HIT - {symbol}",
+                "color": 0xFFD700,  # Gold
+                "fields": [
+                    {
+                        "name": "Direction",
+                        "value": direction.upper(),
+                        "inline": True
+                    },
+                    {
+                        "name": "Exit Price",
+                        "value": f"${price:,.2f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "Partial PnL",
+                        "value": f"${pnl:+.2f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "Total PnL",
+                        "value": f"${total_pnl:+.2f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "Remaining Position",
+                        "value": f"{remaining_percent}%",
+                        "inline": True
+                    }
+                ],
+                "footer": {
+                    "text": "BitGet Futures Signal Bot"
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            payload = {"embeds": [embed]}
+            
+            response = requests.post(self.webhook_url, json=payload)
+            return response.status_code == 204
+            
+        except Exception as e:
+            logger.error(f"Error sending TP notification: {e}")
+            return False
+    
+    def send_stop_hit(
+        self,
+        symbol: str,
+        direction: str,
+        price: float,
+        total_pnl: float
+    ) -> bool:
+        """Send stop loss hit notification"""
+        try:
+            embed = {
+                "title": f"🛑 STOP LOSS HIT - {symbol}",
+                "color": 0xFF0000,  # Red
+                "fields": [
+                    {
+                        "name": "Direction",
+                        "value": direction.upper(),
+                        "inline": True
+                    },
+                    {
+                        "name": "Exit Price",
+                        "value": f"${price:,.2f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "Total PnL",
+                        "value": f"${total_pnl:+.2f}",
+                        "inline": False
+                    }
+                ],
+                "footer": {
+                    "text": "BitGet Futures Signal Bot"
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            payload = {"embeds": [embed]}
+            
+            response = requests.post(self.webhook_url, json=payload)
+            return response.status_code == 204
+            
+        except Exception as e:
+            logger.error(f"Error sending stop loss notification: {e}")
+            return False
+    
+    def send_status_update(
+        self,
+        message: str,
+        stats: Optional[Dict] = None
+    ) -> bool:
+        """Send general status update"""
+        try:
+            fields = []
+            
+            if stats:
+                fields = [
+                    {
+                        "name": "Equity",
+                        "value": f"${stats.get('equity', 0):.2f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "Daily PnL",
+                        "value": f"${stats.get('daily_pnl', 0):+.2f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "Win Rate",
+                        "value": f"{stats.get('win_rate', 0):.1f}%",
+                        "inline": True
+                    }
+                ]
+            
+            embed = {
+                "title": "📊 Bot Status Update",
+                "description": message,
+                "color": 0x3498DB,  # Blue
+                "fields": fields,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            payload = {"embeds": [embed]}
+            
+            response = requests.post(self.webhook_url, json=payload)
+            return response.status_code == 204
+            
+        except Exception as e:
+            logger.error(f"Error sending status update: {e}")
+            return False
+    
+    def send_error(self, error_message: str) -> bool:
+        """Send error notification"""
+        try:
+            embed = {
+                "title": "⚠️ Bot Error",
+                "description": f"```{error_message}```",
+                "color": 0xFF0000,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            payload = {"embeds": [embed]}
+            
+            response = requests.post(self.webhook_url, json=payload)
+            return response.status_code == 204
+            
+        except Exception as e:
+            logger.error(f"Error sending error notification: {e}")
+            return False
+    
+    def _get_grade(self, score: int) -> str:
+        """Convert score to letter grade"""
+        if score >= 90:
+            return 'A+'
+        elif score >= 80:
+            return 'A'
+        elif score >= 70:
+            return 'B+'
+        elif score >= 60:
+            return 'B'
+        elif score >= 50:
+            return 'C'
+        else:
+            return 'D'
