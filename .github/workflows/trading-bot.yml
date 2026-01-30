@@ -94,6 +94,17 @@ jobs:
               --no-progress
           fi
       
+      - name: 📤 Upload state as artifacts (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-state-backup
+          path: |
+            data/signals_active.json
+            data/signals_history.json
+            data/performance.json
+          retention-days: 7
+      
       - name: 📊 Upload logs as artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -103,7 +114,9 @@ jobs:
           retention-days: 7
       
       - name: ⚠️ Notify on failure
-        if: failure()
+        if: failure() && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           curl -H "Content-Type: application/json" \
                -d "{\"content\":\"⚠️ **Trading Bot Workflow Failed**\n\nRun: ${{ github.run_number }}\nTime: $(date -u)\n[View Logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}" \

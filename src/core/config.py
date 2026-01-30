@@ -16,11 +16,11 @@ class Config:
     DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
     
     # ==================== CAPITAL & RISK ====================
-    INITIAL_CAPITAL = float(os.getenv('INITIAL_CAPITAL', 2000))
-    RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', 0.01))  # 1%
-    MAX_DAILY_LOSS = float(os.getenv('MAX_DAILY_LOSS', 0.02))  # 2%
-    MAX_WEEKLY_LOSS = float(os.getenv('MAX_WEEKLY_LOSS', 0.06))  # 6%
-    MAX_LEVERAGE = float(os.getenv('MAX_LEVERAGE', 3.0))
+    INITIAL_CAPITAL = float(os.getenv('INITIAL_CAPITAL', '2000') or 2000)
+    RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.01') or 0.01)  # 1%
+    MAX_DAILY_LOSS = float(os.getenv('MAX_DAILY_LOSS', '0.02') or 0.02)  # 2%
+    MAX_WEEKLY_LOSS = float(os.getenv('MAX_WEEKLY_LOSS', '0.06') or 0.06)  # 6%
+    MAX_LEVERAGE = float(os.getenv('MAX_LEVERAGE', '3.0') or 3.0)
     MAX_CONSECUTIVE_LOSSES = 3
     
     # ==================== TRADING PAIRS ====================
