@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from typing import Dict
 from ta.trend import EMAIndicator, MACD, ADXIndicator
 from ta.volatility import AverageTrueRange
 from ta.momentum import RSIIndicator
