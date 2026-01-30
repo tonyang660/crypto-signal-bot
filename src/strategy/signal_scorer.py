@@ -162,3 +162,213 @@ class SignalScorer:
             return 'C'
         else:
             return 'D'
+
+    @staticmethod
+    def calculate_score_with_breakdown(
+        data: Dict[str, pd.DataFrame],
+        direction: str,
+        symbol: str
+    ) -> tuple:
+        """
+        Calculate signal quality score with detailed breakdown
+        
+        Returns:
+            (score: int, breakdown: dict)
+        """
+        try:
+            breakdown = {
+                'htf_alignment': {'points': 0, 'max': 30, 'details': ''},
+                'momentum': {'points': 0, 'max': 25, 'details': ''},
+                'entry_location': {'points': 0, 'max': 20, 'details': ''},
+                'volatility': {'points': 0, 'max': 15, 'details': ''},
+                'volume': {'points': 0, 'max': 10, 'details': ''}
+            }
+            
+            score = 0
+            htf_df = data['htf']
+            primary_df = data['primary']
+            entry_df = data['entry']
+            
+            # === 1. HTF Trend Alignment (0-30 points) ===
+            htf_trend = MarketStructure.get_trend_direction(htf_df)
+            
+            if direction == 'long':
+                if htf_trend == 'bullish':
+                    price = htf_df['close'].iloc[-1]
+                    ema_200 = htf_df['ema_200'].iloc[-1]
+                    
+                    if ema_200 > 0:
+                        distance = (price - ema_200) / ema_200
+                        
+                        if distance > 0.05:
+                            breakdown['htf_alignment']['points'] = 30
+                            breakdown['htf_alignment']['details'] = f'Strongly bullish, {distance*100:.1f}% above EMA200'
+                            score += 30
+                        elif distance > 0.02:
+                            breakdown['htf_alignment']['points'] = 20
+                            breakdown['htf_alignment']['details'] = f'Bullish, {distance*100:.1f}% above EMA200'
+                            score += 20
+                        else:
+                            breakdown['htf_alignment']['points'] = 15
+                            breakdown['htf_alignment']['details'] = f'Weakly bullish, {distance*100:.1f}% above EMA200'
+                            score += 15
+                    else:
+                        breakdown['htf_alignment']['points'] = 15
+                        breakdown['htf_alignment']['details'] = 'Bullish trend'
+                        score += 15
+                elif htf_trend == 'neutral':
+                    breakdown['htf_alignment']['points'] = 10
+                    breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
+                    score += 10
+                else:
+                    breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
+            
+            elif direction == 'short':
+                if htf_trend == 'bearish':
+                    price = htf_df['close'].iloc[-1]
+                    ema_200 = htf_df['ema_200'].iloc[-1]
+                    
+                    if ema_200 > 0:
+                        distance = (ema_200 - price) / ema_200
+                        
+                        if distance > 0.05:
+                            breakdown['htf_alignment']['points'] = 30
+                            breakdown['htf_alignment']['details'] = f'Strongly bearish, {distance*100:.1f}% below EMA200'
+                            score += 30
+                        elif distance > 0.02:
+                            breakdown['htf_alignment']['points'] = 20
+                            breakdown['htf_alignment']['details'] = f'Bearish, {distance*100:.1f}% below EMA200'
+                            score += 20
+                        else:
+                            breakdown['htf_alignment']['points'] = 15
+                            breakdown['htf_alignment']['details'] = f'Weakly bearish, {distance*100:.1f}% below EMA200'
+                            score += 15
+                    else:
+                        breakdown['htf_alignment']['points'] = 15
+                        breakdown['htf_alignment']['details'] = 'Bearish trend'
+                        score += 15
+                elif htf_trend == 'neutral':
+                    breakdown['htf_alignment']['points'] = 10
+                    breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
+                    score += 10
+                else:
+                    breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
+            
+            # === 2. Momentum Quality (0-25 points) ===
+            macd_hist = primary_df['macd_hist'].tail(3).values
+            
+            if len(macd_hist) >= 3:
+                if direction == 'long':
+                    if (macd_hist[-1] > macd_hist[-2] > macd_hist[-3] and macd_hist[-1] > 0):
+                        breakdown['momentum']['points'] = 25
+                        breakdown['momentum']['details'] = 'Accelerating upward momentum'
+                        score += 25
+                    elif macd_hist[-1] > macd_hist[-2] and macd_hist[-1] > 0:
+                        breakdown['momentum']['points'] = 18
+                        breakdown['momentum']['details'] = 'Increasing momentum'
+                        score += 18
+                    elif macd_hist[-1] > 0:
+                        breakdown['momentum']['points'] = 12
+                        breakdown['momentum']['details'] = 'Positive but weak momentum'
+                        score += 12
+                elif direction == 'short':
+                    if (macd_hist[-1] < macd_hist[-2] < macd_hist[-3] and macd_hist[-1] < 0):
+                        breakdown['momentum']['points'] = 25
+                        breakdown['momentum']['details'] = 'Accelerating downward momentum'
+                        score += 25
+                    elif macd_hist[-1] < macd_hist[-2] and macd_hist[-1] < 0:
+                        breakdown['momentum']['points'] = 18
+                        breakdown['momentum']['details'] = 'Increasing downward momentum'
+                        score += 18
+                    elif macd_hist[-1] < 0:
+                        breakdown['momentum']['points'] = 12
+                        breakdown['momentum']['details'] = 'Negative but weak momentum'
+                        score += 12
+                else:
+                    breakdown['momentum']['details'] = f'Negative momentum (MACD: {macd_hist[-1]:.4f})'
+            
+            # === 3. Entry Location Quality (0-20 points) ===
+            price = entry_df['close'].iloc[-1]
+            ema_21 = entry_df['ema_21'].iloc[-1]
+            atr = primary_df['atr'].iloc[-1]
+            
+            if atr > 0 and ema_21 > 0:
+                distance_from_ema = abs(price - ema_21) / atr
+                
+                if distance_from_ema < 0.3:
+                    breakdown['entry_location']['points'] = 20
+                    breakdown['entry_location']['details'] = f'Excellent entry location ({distance_from_ema:.2f} ATR from EMA)'
+                    score += 20
+                elif distance_from_ema < 0.6:
+                    breakdown['entry_location']['points'] = 15
+                    breakdown['entry_location']['details'] = f'Good entry location ({distance_from_ema:.2f} ATR from EMA)'
+                    score += 15
+                elif distance_from_ema < 1.0:
+                    breakdown['entry_location']['points'] = 10
+                    breakdown['entry_location']['details'] = f'Fair entry location ({distance_from_ema:.2f} ATR from EMA)'
+                    score += 10
+                else:
+                    breakdown['entry_location']['points'] = 5
+                    breakdown['entry_location']['details'] = f'Poor entry location ({distance_from_ema:.2f} ATR from EMA)'
+                    score += 5
+            
+            # === 4. Volatility Suitability (0-15 points) ===
+            current_atr = primary_df['atr'].iloc[-1]
+            avg_atr = primary_df['atr_sma'].iloc[-1]
+            
+            if avg_atr > 0:
+                atr_ratio = current_atr / avg_atr
+                
+                if 0.9 <= atr_ratio <= 1.3:
+                    breakdown['volatility']['points'] = 15
+                    breakdown['volatility']['details'] = f'Normal volatility (ATR ratio: {atr_ratio:.2f})'
+                    score += 15
+                elif 0.7 <= atr_ratio <= 1.6:
+                    breakdown['volatility']['points'] = 10
+                    breakdown['volatility']['details'] = f'Acceptable volatility (ATR ratio: {atr_ratio:.2f})'
+                    score += 10
+                elif 0.5 <= atr_ratio <= 2.0:
+                    breakdown['volatility']['points'] = 5
+                    breakdown['volatility']['details'] = f'Marginal volatility (ATR ratio: {atr_ratio:.2f})'
+                    score += 5
+            else:
+                breakdown['volatility']['details'] = f'Extreme volatility (ATR ratio: {atr_ratio:.2f})'
+            
+            # === 5. Volume Confirmation (0-10 points) ===
+            volume = entry_df['volume'].iloc[-1]
+            volume_sma = entry_df['volume_sma'].iloc[-1]
+            
+            if volume_sma > 0:
+                volume_ratio = volume / volume_sma
+                
+                if volume_ratio > 1.5:
+                    breakdown['volume']['points'] = 10
+                    breakdown['volume']['details'] = f'Strong volume ({volume_ratio:.2f}x average)'
+                    score += 10
+                elif volume_ratio > 1.2:
+                    breakdown['volume']['points'] = 7
+                    breakdown['volume']['details'] = f'Good volume ({volume_ratio:.2f}x average)'
+                    score += 7
+                elif volume_ratio > 1.0:
+                    breakdown['volume']['points'] = 5
+                    breakdown['volume']['details'] = f'Above average volume ({volume_ratio:.2f}x)'
+                    score += 5
+            else:
+                breakdown['volume']['details'] = f'Low volume ({volume_ratio:.2f}x average)'
+            
+            final_score = min(score, 100)
+            
+            # Log detailed breakdown
+            logger.info(f"{symbol} {direction.upper()} signal score breakdown:")
+            logger.info(f"  HTF Alignment:   {breakdown['htf_alignment']['points']:2d}/{breakdown['htf_alignment']['max']} - {breakdown['htf_alignment']['details']}")
+            logger.info(f"  Momentum:        {breakdown['momentum']['points']:2d}/{breakdown['momentum']['max']} - {breakdown['momentum']['details']}")
+            logger.info(f"  Entry Location:  {breakdown['entry_location']['points']:2d}/{breakdown['entry_location']['max']} - {breakdown['entry_location']['details']}")
+            logger.info(f"  Volatility:      {breakdown['volatility']['points']:2d}/{breakdown['volatility']['max']} - {breakdown['volatility']['details']}")
+            logger.info(f"  Volume:          {breakdown['volume']['points']:2d}/{breakdown['volume']['max']} - {breakdown['volume']['details']}")
+            logger.info(f"  TOTAL SCORE:     {final_score}/100")
+            
+            return final_score, breakdown
+            
+        except Exception as e:
+            logger.error(f"Error calculating signal score: {e}")
+            return 0, {}

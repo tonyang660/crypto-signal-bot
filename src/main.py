@@ -126,48 +126,61 @@ class SignalBot:
             regime = RegimeDetector.detect_regime(data['primary'])
             
             if not RegimeDetector.should_trade_regime(regime):
-                logger.debug(f"{symbol}: Unfavorable regime ({regime})")
+                logger.info(f"{symbol}: ❌ Unfavorable regime ({regime})")
                 return
+            
+            logger.info(f"{symbol}: ✓ Regime check passed ({regime})")
             
             # Check for long entry
             long_check = EntryLogic.check_long_entry(data)
             if long_check['valid']:
-                self._create_signal(symbol, 'long', data, long_check['reason'])
+                logger.info(f"{symbol}: ✅ LONG entry conditions met - {long_check['reason']}")
+                # Calculate score with breakdown
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
+                self._create_signal_with_score(symbol, 'long', data, long_check['reason'], score, breakdown)
                 return
+            else:
+                logger.info(f"{symbol}: ❌ Long entry failed - {long_check['reason']}")
             
             # Check for short entry
             short_check = EntryLogic.check_short_entry(data)
             if short_check['valid']:
-                self._create_signal(symbol, 'short', data, short_check['reason'])
+                logger.info(f"{symbol}: ✅ SHORT entry conditions met - {short_check['reason']}")
+                # Calculate score with breakdown
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
+                self._create_signal_with_score(symbol, 'short', data, short_check['reason'], score, breakdown)
                 return
+            else:
+                logger.info(f"{symbol}: ❌ Short entry failed - {short_check['reason']}")
             
             logger.debug(f"{symbol}: No entry conditions met")
             
         except Exception as e:
             logger.error(f"Error scanning {symbol}: {e}")
     
-    def _create_signal(
+    def _create_signal_with_score(
         self,
         symbol: str,
         direction: str,
         data: Dict,
-        entry_reason: str
+        entry_reason: str,
+        score: int,
+        breakdown: dict
     ):
-        """Create new trading signal"""
+        """Create new trading signal with pre-calculated score"""
         try:
             # Get current price
             current_price = data['entry']['close'].iloc[-1]
-            
-            # Calculate signal score
-            score = SignalScorer.calculate_score(data, direction)
             
             # Check score threshold
             account_state = self.risk_manager.get_account_state()
             threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
             
             if score < threshold:
-                logger.info(f"{symbol}: Score {score} below threshold {threshold}")
+                logger.warning(f"{symbol}: ⚠️  Score {score}/100 below threshold {threshold} - Signal rejected")
                 return
+            
+            logger.success(f"{symbol}: ✅ Score {score}/100 exceeds threshold {threshold}")
             
             # Calculate stop loss
             stop_loss = StopTPCalculator.calculate_stop_loss(
