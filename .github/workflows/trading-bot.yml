@@ -2,8 +2,7 @@ name: Trading Signal Bot
 
 on:
   schedule:
-    # Run every 5 minutes (GitHub Actions has 5-min granularity)
-    # Note: May be delayed by 10-15 minutes
+    # Run every 5 minutes - Active and working
     - cron: '*/5 * * * *'
   
   workflow_dispatch:  # Allow manual trigger from Actions tab
