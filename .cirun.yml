@@ -1,0 +1,23 @@
+# Cirun configuration for crypto signal bot
+runners:
+  - name: "aws-runner"
+    cloud: "aws"
+    
+    # Cheap and sufficient for Python bot
+    instance_type: "t3.micro"  # 2 vCPU, 1GB RAM
+    
+    # Match GitHub's ubuntu-latest
+    machine_image: "ubuntu-22.04"
+    
+    # Labels to use in workflow
+    labels:
+      - "cirun-aws"
+    
+    # Use spot instances for 70% cost savings
+    preemptible: true
+    
+    # Auto-terminate quickly to save costs
+    idle_time: 45
+    
+    # Use same region as your S3 bucket for faster sync
+    region: "us-east-2"  # Change if your bucket is in different region

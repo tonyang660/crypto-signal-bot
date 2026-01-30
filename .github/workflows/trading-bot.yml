@@ -21,7 +21,7 @@ on:
 
 jobs:
   run-signal-bot:
-    runs-on: ubuntu-latest
+    runs-on: cirun-aws--${{ github.run_id }}
     timeout-minutes: 10
     environment: signal-bot  # Use the environment you created
     
