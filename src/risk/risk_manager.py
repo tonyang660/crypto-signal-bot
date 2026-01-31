@@ -108,12 +108,13 @@ class RiskManager:
         
         Returns: 'normal', 'drawdown', or 'hot_streak'
         """
-        # Drawdown if daily loss > 1%
-        if abs(self.daily_loss / self.equity) > 0.01:
+        # Drawdown if NET daily PnL is negative and > 1% of equity
+        if self.daily_pnl < 0 and abs(self.daily_pnl / self.equity) > 0.01:
             return 'drawdown'
         
-        # Could implement hot streak detection here
-        # For now, just normal or drawdown
+        # Hot streak if NET daily PnL is positive and > 2% of equity
+        if self.daily_pnl > 0 and (self.daily_pnl / self.equity) > 0.02:
+            return 'hot_streak'
         
         return 'normal'
     
