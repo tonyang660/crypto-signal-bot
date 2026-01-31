@@ -8,6 +8,22 @@ class StopTPCalculator:
     """Calculate stop loss and take profit levels"""
     
     @staticmethod
+    def _smart_round(price: float) -> float:
+        """Round price based on its magnitude for precision"""
+        if price < 0.01:
+            return round(price, 8)
+        elif price < 0.1:
+            return round(price, 6)
+        elif price < 1:
+            return round(price, 5)
+        elif price < 10:
+            return round(price, 4)
+        elif price < 100:
+            return round(price, 3)
+        else:
+            return round(price, 2)
+    
+    @staticmethod
     def calculate_stop_loss(
         data: Dict[str, pd.DataFrame],
         direction: str,
@@ -73,16 +89,16 @@ class StopTPCalculator:
                 if (stop_loss - entry_price) > max_stop_distance:
                     stop_loss = entry_price + max_stop_distance
             
-            return round(stop_loss, 2)
+            return StopTPCalculator._smart_round(stop_loss)
             
         except Exception as e:
             logger.error(f"Error calculating stop loss: {e}")
             # Fallback to simple ATR-based stop
             atr = data['primary']['atr'].iloc[-1]
             if direction == 'long':
-                return round(entry_price - (1.5 * atr), 2)
+                return StopTPCalculator._smart_round(entry_price - (1.5 * atr))
             else:
-                return round(entry_price + (1.5 * atr), 2)
+                return StopTPCalculator._smart_round(entry_price + (1.5 * atr))
     
     @staticmethod
     def calculate_take_profits(
@@ -102,17 +118,17 @@ class StopTPCalculator:
                 
                 return {
                     'tp1': {
-                        'price': round(entry_price + (risk * Config.TP1_RATIO), 2),
+                        'price': StopTPCalculator._smart_round(entry_price + (risk * Config.TP1_RATIO)),
                         'close_percent': Config.TP1_CLOSE_PERCENT,
                         'ratio': Config.TP1_RATIO
                     },
                     'tp2': {
-                        'price': round(entry_price + (risk * Config.TP2_RATIO), 2),
+                        'price': StopTPCalculator._smart_round(entry_price + (risk * Config.TP2_RATIO)),
                         'close_percent': Config.TP2_CLOSE_PERCENT,
                         'ratio': Config.TP2_RATIO
                     },
                     'tp3': {
-                        'price': round(entry_price + (risk * Config.TP3_RATIO), 2),
+                        'price': StopTPCalculator._smart_round(entry_price + (risk * Config.TP3_RATIO)),
                         'close_percent': Config.TP3_CLOSE_PERCENT,
                         'ratio': Config.TP3_RATIO
                     }
@@ -123,17 +139,17 @@ class StopTPCalculator:
                 
                 return {
                     'tp1': {
-                        'price': round(entry_price - (risk * Config.TP1_RATIO), 2),
+                        'price': StopTPCalculator._smart_round(entry_price - (risk * Config.TP1_RATIO)),
                         'close_percent': Config.TP1_CLOSE_PERCENT,
                         'ratio': Config.TP1_RATIO
                     },
                     'tp2': {
-                        'price': round(entry_price - (risk * Config.TP2_RATIO), 2),
+                        'price': StopTPCalculator._smart_round(entry_price - (risk * Config.TP2_RATIO)),
                         'close_percent': Config.TP2_CLOSE_PERCENT,
                         'ratio': Config.TP2_RATIO
                     },
                     'tp3': {
-                        'price': round(entry_price - (risk * Config.TP3_RATIO), 2),
+                        'price': StopTPCalculator._smart_round(entry_price - (risk * Config.TP3_RATIO)),
                         'close_percent': Config.TP3_CLOSE_PERCENT,
                         'ratio': Config.TP3_RATIO
                     }
