@@ -57,7 +57,7 @@ class SignalBot:
         
         # Send startup notification
         self.discord.send_status_update(
-            "🤖 Signal Bot Started",
+            "🤖 Signal Bot Online",
             self.risk_manager.get_risk_stats()
         )
     
@@ -386,11 +386,13 @@ if __name__ == "__main__":
         logger.info("🔄 Running in single-scan mode (GitHub Actions)")
         bot.scan_markets()
         
-        # Check if daily report should be sent (only at 00:05)
+        # Check if daily report should be sent (only between 00:00-00:09)
         current_time = datetime.now()
-        if current_time.hour == 0 and 0 <= current_time.minute <= 9:
+        if current_time.hour == 0 and current_time.minute <= 9:
             bot.send_daily_report()
             logger.info(f"📊 Daily report sent at {current_time.strftime('%H:%M')}")
+        else:
+            logger.debug(f"Skipping daily report (current time: {current_time.strftime('%H:%M')})")
         
         logger.info("✅ Single scan complete, exiting")
     else:
