@@ -16,8 +16,8 @@ runners:
     # Use on-demand instances (more reliable than spot)
     preemptible: false
     
-    # Keep runner alive for 10 minutes between jobs (matches your cron schedule)
-    idle_time: 600  # 10 minutes - keeps runner warm for frequent runs
+    # Keep runner alive for 1 minute between jobs (matches your cron schedule)
+    idle_time: 60  # 1 minute - keeps runner warm for frequent runs
     
     # Use same region as your S3 bucket for faster sync
     region: "us-east-2"

@@ -137,28 +137,42 @@ class SignalBot:
             
             # Check for long entry
             long_check = EntryLogic.check_long_entry(data)
-            if long_check['valid']:
-                # Calculate score with breakdown
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
-                logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
-                self._create_signal_with_score(symbol, 'long', data, long_check['reason'], score, breakdown)
+            
+            # Calculate score first
+            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
+            
+            # Allow signal if entry requirements met OR score >= 80
+            if long_check['valid'] or score >= 80:
+                if not long_check['valid']:
+                    logger.warning(f"{symbol}: ⚠️  LONG entry requirements not fully met, but score is high ({score}/100) - Creating signal with override")
+                    reason = f"High score override (80+): {long_check['reason']}"
+                else:
+                    logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
+                    reason = long_check['reason']
+                
+                self._create_signal_with_score(symbol, 'long', data, reason, score, breakdown)
                 return
             else:
-                # Calculate score even when rejected to show why
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
                 logger.info(f"{symbol}: ❌ Long entry failed | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
             
             # Check for short entry
             short_check = EntryLogic.check_short_entry(data)
-            if short_check['valid']:
-                # Calculate score with breakdown
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
-                logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
-                self._create_signal_with_score(symbol, 'short', data, short_check['reason'], score, breakdown)
+            
+            # Calculate score first
+            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
+            
+            # Allow signal if entry requirements met OR score >= 80
+            if short_check['valid'] or score >= 80:
+                if not short_check['valid']:
+                    logger.warning(f"{symbol}: ⚠️  SHORT entry requirements not fully met, but score is high ({score}/100) - Creating signal with override")
+                    reason = f"High score override (80+): {short_check['reason']}"
+                else:
+                    logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
+                    reason = short_check['reason']
+                
+                self._create_signal_with_score(symbol, 'short', data, reason, score, breakdown)
                 return
             else:
-                # Calculate score even when rejected to show why
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
                 logger.info(f"{symbol}: ❌ Short entry failed | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
             
             logger.debug(f"{symbol}: No entry conditions met")
@@ -372,10 +386,21 @@ if __name__ == "__main__":
         logger.info("🔄 Running in single-scan mode (GitHub Actions)")
         bot.scan_markets()
         
-        # Check if daily report should be sent (at midnight UTC)
-        current_hour = datetime.now().hour
-        if current_hour == 0:
+        # Check if daily report should be sent (once per day)
+        from pathlib import Path
+        report_file = Path('data/last_daily_report.txt')
+        current_time = datetime.now()
+        today = current_time.date().isoformat()
+        
+        try:
+            last_report = report_file.read_text().strip() if report_file.exists() else ""
+        except:
+            last_report = ""
+        
+        if current_time.hour == 0 and last_report != today:
             bot.send_daily_report()
+            report_file.write_text(today)
+            logger.info(f"📊 Daily report sent and logged for {today}")
         
         logger.info("✅ Single scan complete, exiting")
     else:
