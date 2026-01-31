@@ -121,7 +121,7 @@ class Config:
             errors.append("RISK_PER_TRADE must be between 0 and 2%")
         
         if cls.MAX_LEVERAGE > 15:
-            errors.append("MAX_LEVERAGE should not exceed 15×")
+            errors.append(f"MAX_LEVERAGE should not exceed 15× (currently: {cls.MAX_LEVERAGE})")
         
         if len(cls.TRADING_PAIRS) == 0:
             errors.append("No trading pairs specified")
