@@ -291,7 +291,10 @@ class SignalBot:
                         remaining_percent=hit_info['remaining_percent']
                     )
                     
-                    # Record trade if fully closed
+                    # Record partial profit immediately (affects daily PnL)
+                    self.risk_manager.record_trade(hit_info['pnl'])
+                    
+                    # Log full trade if position fully closed
                     if hit_info['remaining_percent'] == 0:
                         self.performance_logger.log_trade(
                             signal_id=signal['signal_id'],
@@ -302,7 +305,6 @@ class SignalBot:
                             pnl=hit_info['total_pnl'],
                             exit_reason='completed'
                         )
-                        self.risk_manager.record_trade(hit_info['total_pnl'])
                 
                 elif hit_info['type'] == 'stop_hit':
                     # Send stop loss notification
