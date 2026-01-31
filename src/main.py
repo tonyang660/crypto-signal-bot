@@ -386,21 +386,11 @@ if __name__ == "__main__":
         logger.info("🔄 Running in single-scan mode (GitHub Actions)")
         bot.scan_markets()
         
-        # Check if daily report should be sent (once per day)
-        from pathlib import Path
-        report_file = Path('data/last_daily_report.txt')
+        # Check if daily report should be sent (only at 00:05)
         current_time = datetime.now()
-        today = current_time.date().isoformat()
-        
-        try:
-            last_report = report_file.read_text().strip() if report_file.exists() else ""
-        except:
-            last_report = ""
-        
-        if current_time.hour == 0 and last_report != today:
+        if current_time.hour == 0 and 0 <= current_time.minute <= 9:
             bot.send_daily_report()
-            report_file.write_text(today)
-            logger.info(f"📊 Daily report sent and logged for {today}")
+            logger.info(f"📊 Daily report sent at {current_time.strftime('%H:%M')}")
         
         logger.info("✅ Single scan complete, exiting")
     else:
