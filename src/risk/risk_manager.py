@@ -123,8 +123,8 @@ class RiskManager:
         return {
             'daily_pnl': self.daily_pnl,  # Include daily PnL (all trades)
             'equity': self.equity,
-            'daily_loss': self.daily_loss,
-            'daily_loss_pct': abs(self.daily_loss / self.equity) * 100,
+            'daily_loss': self.daily_loss,  # Keep for tracking purposes
+            'daily_pnl_pct': (self.daily_pnl / self.equity) * 100 if self.equity > 0 else 0,  # Net daily P&L percentage
             'weekly_loss': self.weekly_loss,
             'weekly_loss_pct': abs(self.weekly_loss / self.equity) * 100,
             'consecutive_losses': self.consecutive_losses,
