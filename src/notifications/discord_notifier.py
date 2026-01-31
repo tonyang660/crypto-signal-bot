@@ -10,6 +10,20 @@ class DiscordNotifier:
     def __init__(self):
         self.webhook_url = Config.DISCORD_WEBHOOK_URL
     
+    @staticmethod
+    def _format_price(price: float) -> str:
+        """Format price with appropriate decimal places based on magnitude"""
+        if price >= 1000:
+            return f"${price:,.2f}"  # BTC: $95,432.50
+        elif price >= 10:
+            return f"${price:.3f}"    # ETH: $3,234.567
+        elif price >= 1:
+            return f"${price:.4f}"     # SOL: $123.4567
+        elif price >= 0.01:
+            return f"${price:.5f}"     # DOGE: $0.12345
+        else:
+            return f"${price:.8f}"     # SHIB: $0.00001234
+    
     def send_new_signal(
         self,
         symbol: str,
@@ -47,13 +61,18 @@ class DiscordNotifier:
                         "inline": True
                     },
                     {
+                        "name": "💵 Margin Used",
+                        "value": f"${position_size.get('margin_used', 0):.2f} ({position_size.get('margin_percent', 0):.1f}%)",
+                        "inline": True
+                    },
+                    {
                         "name": "📍 Entry",
-                        "value": f"${entry_price:,.2f}",
+                        "value": self._format_price(entry_price),
                         "inline": False
                     },
                     {
                         "name": "🛑 Stop Loss",
-                        "value": f"${stop_loss:,.2f} (-{position_size['stop_distance_pct']:.2f}%)",
+                        "value": f"{self._format_price(stop_loss)} (-{position_size['stop_distance_pct']:.2f}%)",
                         "inline": True
                     },
                     {
@@ -63,17 +82,17 @@ class DiscordNotifier:
                     },
                     {
                         "name": "🎯 Take Profit 1",
-                        "value": f"${take_profits['tp1']['price']:,.2f} (Close {take_profits['tp1']['close_percent']}%)",
+                        "value": f"{self._format_price(take_profits['tp1']['price'])} (Close {take_profits['tp1']['close_percent']}%)",
                         "inline": False
                     },
                     {
                         "name": "🎯 Take Profit 2",
-                        "value": f"${take_profits['tp2']['price']:,.2f} (Close {take_profits['tp2']['close_percent']}%)",
+                        "value": f"{self._format_price(take_profits['tp2']['price'])} (Close {take_profits['tp2']['close_percent']}%)",
                         "inline": True
                     },
                     {
                         "name": "🎯 Take Profit 3",
-                        "value": f"${take_profits['tp3']['price']:,.2f} (Trail {take_profits['tp3']['close_percent']}%)",
+                        "value": f"{self._format_price(take_profits['tp3']['price'])} (Trail {take_profits['tp3']['close_percent']}%)",
                         "inline": True
                     },
                     {
@@ -128,7 +147,7 @@ class DiscordNotifier:
                     },
                     {
                         "name": "Exit Price",
-                        "value": f"${price:,.2f}",
+                        "value": self._format_price(price),
                         "inline": True
                     },
                     {
@@ -182,7 +201,7 @@ class DiscordNotifier:
                     },
                     {
                         "name": "Exit Price",
-                        "value": f"${price:,.2f}",
+                        "value": self._format_price(price),
                         "inline": True
                     },
                     {

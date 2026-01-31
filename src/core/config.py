@@ -20,7 +20,7 @@ class Config:
     RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.01') or 0.01)  # 1%
     MAX_DAILY_LOSS = float(os.getenv('MAX_DAILY_LOSS', '0.02') or 0.02)  # 2%
     MAX_WEEKLY_LOSS = float(os.getenv('MAX_WEEKLY_LOSS', '0.06') or 0.06)  # 6%
-    MAX_LEVERAGE = float(os.getenv('MAX_LEVERAGE', '3.0') or 3.0)
+    MAX_LEVERAGE = float(os.getenv('MAX_LEVERAGE', '15.0') or 15.0)
     MAX_CONSECUTIVE_LOSSES = 3
     
     # ==================== TRADING PAIRS ====================
