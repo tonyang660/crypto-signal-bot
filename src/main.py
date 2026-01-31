@@ -55,10 +55,19 @@ class SignalBot:
         
         logger.info("✓ All components initialized")
         
-        # Send startup notification
+        # Send startup notification with combined stats
+        risk_stats = self.risk_manager.get_risk_stats()
+        perf_stats = self.performance_logger.get_statistics(days=1)
+        
+        combined_stats = {
+            'equity': risk_stats['equity'],
+            'daily_pnl': risk_stats['daily_pnl'],  # Use daily_pnl which includes all wins and losses
+            'win_rate': perf_stats.get('win_rate', 0)
+        }
+        
         self.discord.send_status_update(
             "🤖 Signal Bot Online",
-            self.risk_manager.get_risk_stats()
+            combined_stats
         )
     
     def scan_markets(self):
@@ -336,6 +345,13 @@ class SignalBot:
             stats = self.performance_logger.get_statistics(days=1)
             risk_stats = self.risk_manager.get_risk_stats()
             
+            # Combine stats for Discord display
+            combined_stats = {
+                'equity': risk_stats['equity'],
+                'daily_pnl': risk_stats['daily_pnl'],  # Shows actual daily P/L from risk manager
+                'win_rate': stats.get('win_rate', 0)
+            }
+            
             message = f"""
 **Daily Performance Report**
 
@@ -344,10 +360,10 @@ Win Rate: {stats.get('win_rate', 0):.1f}%
 Total PnL: ${stats.get('total_pnl', 0):+.2f}
 
 Account Equity: ${risk_stats['equity']:.2f}
-Daily Loss: ${risk_stats['daily_loss']:+.2f}
+Daily PnL: ${risk_stats['daily_pnl']:+.2f}
 """
             
-            self.discord.send_status_update(message, stats)
+            self.discord.send_status_update(message, combined_stats)
             logger.info("📊 Daily report sent")
             
         except Exception as e:

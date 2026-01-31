@@ -12,6 +12,7 @@ class RiskManager:
         self.equity = Config.INITIAL_CAPITAL
         self.daily_loss = 0.0
         self.weekly_loss = 0.0
+        self.daily_pnl = 0.0  # Track all daily PnL (wins and losses)
         self.consecutive_losses = 0
         self.trading_enabled = True
         self.cooldown_until: Optional[datetime] = None
@@ -71,6 +72,9 @@ class RiskManager:
             # Update equity
             self.equity += pnl
             
+            # Track daily PnL (all trades)
+            self.daily_pnl += pnl
+            
             if pnl < 0:
                 # Record loss
                 self.daily_loss += pnl
@@ -113,6 +117,7 @@ class RiskManager:
     def get_risk_stats(self) -> dict:
         """Get current risk statistics"""
         return {
+            'daily_pnl': self.daily_pnl,  # Include daily PnL (all trades)
             'equity': self.equity,
             'daily_loss': self.daily_loss,
             'daily_loss_pct': abs(self.daily_loss / self.equity) * 100,
@@ -128,6 +133,7 @@ class RiskManager:
         today = datetime.now().date()
         if today > self.last_reset_date:
             logger.info(f"📅 New day - resetting daily counters")
+            self.daily_pnl = 0.0  # Reset daily PnL
             self.daily_loss = 0.0
             self.last_reset_date = today
             
@@ -159,6 +165,7 @@ class RiskManager:
         """Persist state to file"""
         try:
             state = {
+                'daily_pnl': self.daily_pnl,  # Save daily PnL
                 'equity': self.equity,
                 'daily_loss': self.daily_loss,
                 'weekly_loss': self.weekly_loss,
@@ -184,7 +191,7 @@ class RiskManager:
             if Path(Config.PERFORMANCE_FILE).exists():
                 with open(Config.PERFORMANCE_FILE, 'r') as f:
                     state = json.load(f)
-                
+                self.daily_pnl = state.get('daily_pnl', 0.0)  # Load daily PnL
                 self.equity = state.get('equity', Config.INITIAL_CAPITAL)
                 self.daily_loss = state.get('daily_loss', 0.0)
                 self.weekly_loss = state.get('weekly_loss', 0.0)
