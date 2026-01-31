@@ -201,7 +201,8 @@ class SignalTracker:
             'close_percent': close_percent,
             'pnl': pnl,
             'total_pnl': signal['realized_pnl'],
-            'remaining_percent': signal['remaining_percent']
+            'remaining_percent': signal['remaining_percent'],
+            'signal': signal.copy()  # Include signal data
         }
         
         logger.info(f"🎯 {tp_level.upper()} hit for {symbol} | PnL: ${pnl:.2f}")
@@ -238,7 +239,8 @@ class SignalTracker:
             'type': 'stop_hit',
             'price': signal['current_price'],
             'loss': loss,
-            'total_pnl': total_pnl
+            'total_pnl': total_pnl,
+            'signal': signal.copy()  # Include signal data before closing
         }
         
         logger.warning(f"🛑 Stop loss hit for {symbol} | Loss: ${loss:.2f} | Total PnL: ${total_pnl:.2f}")

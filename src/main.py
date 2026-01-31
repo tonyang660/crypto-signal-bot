@@ -276,7 +276,8 @@ class SignalBot:
             hit_info = self.signal_tracker.update_signal_price(symbol, current_price)
             
             if hit_info:
-                signal = self.signal_tracker.get_active_signal(symbol)
+                # Signal data is included in hit_info
+                signal = hit_info['signal']
                 
                 if hit_info['type'] == 'tp_hit':
                     # Send TP notification
