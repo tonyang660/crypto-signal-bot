@@ -75,9 +75,9 @@ class PositionSizer:
             contracts = position_data.get('contracts', 0)
             notional = position_data.get('notional_usd', 0)
             
-            min_size = market_info.get('min_order_size', 0)
-            max_size = market_info.get('max_order_size', float('inf'))
-            min_notional = market_info.get('min_notional', 0)
+            min_size = market_info.get('min_order_size') or 0
+            max_size = market_info.get('max_order_size') or float('inf')
+            min_notional = market_info.get('min_notional') or 0
             
             if contracts < min_size:
                 logger.warning(f"Position size {contracts} below minimum {min_size}")
