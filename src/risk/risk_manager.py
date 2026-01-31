@@ -44,15 +44,18 @@ class RiskManager:
             remaining = (self.cooldown_until - datetime.now()).total_seconds() / 3600
             return False, f"⏸️ Cooldown active for {remaining:.1f} more hours"
         
-        # Check daily loss limit
-        daily_loss_pct = abs(self.daily_loss / self.equity)
-        if daily_loss_pct >= Config.MAX_DAILY_LOSS:
-            return False, f"🛑 Daily loss limit hit: ${abs(self.daily_loss):.2f} ({daily_loss_pct*100:.1f}%)"
+        # Check daily loss limit based on NET daily PnL (not just losses)
+        # Only stop trading if NET daily PnL is negative and exceeds limit
+        if self.daily_pnl < 0:
+            daily_loss_pct = abs(self.daily_pnl / self.equity)
+            if daily_loss_pct >= Config.MAX_DAILY_LOSS:
+                return False, f"🛑 Daily loss limit hit: ${self.daily_pnl:.2f} ({daily_loss_pct*100:.1f}%)"
         
-        # Check weekly loss limit
-        weekly_loss_pct = abs(self.weekly_loss / self.equity)
-        if weekly_loss_pct >= Config.MAX_WEEKLY_LOSS:
-            return False, f"🛑 Weekly loss limit hit: ${abs(self.weekly_loss):.2f} ({weekly_loss_pct*100:.1f}%)"
+        # Check weekly loss limit based on NET weekly PnL
+        if self.weekly_loss < 0:
+            weekly_loss_pct = abs(self.weekly_loss / self.equity)
+            if weekly_loss_pct >= Config.MAX_WEEKLY_LOSS:
+                return False, f"🛑 Weekly loss limit hit: ${self.weekly_loss:.2f} ({weekly_loss_pct*100:.1f}%)"
         
         # Check consecutive losses
         if self.consecutive_losses >= Config.MAX_CONSECUTIVE_LOSSES:
