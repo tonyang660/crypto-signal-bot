@@ -167,6 +167,43 @@ class SignalTracker:
         
         return hit_info
     
+    def _calculate_trailing_stop(self, signal: Dict, tp_level: str) -> float:
+        """
+        Calculate new stop loss based on trailing strategy
+        
+        Strategy:
+        - After TP1: Move SL to 50% of original risk (halfway to entry)
+        - After TP2: Move SL to breakeven (entry price)
+        - After TP3: Keep at breakeven or trail slightly
+        """
+        entry_price = signal['entry_price']
+        original_stop = signal['stop_loss']
+        direction = signal['direction']
+        
+        if tp_level == 'tp1':
+            # Move to 50% of original risk
+            if direction == 'long':
+                # Entry above stop, move stop halfway up
+                new_stop = original_stop + (entry_price - original_stop) * 0.5
+            else:  # short
+                # Entry below stop, move stop halfway down
+                new_stop = original_stop - (original_stop - entry_price) * 0.5
+            
+            logger.debug(f"TP1 trailing: Moving stop to 50% risk level")
+            return new_stop
+        
+        elif tp_level == 'tp2':
+            # Move to breakeven
+            logger.debug(f"TP2 trailing: Moving stop to breakeven")
+            return entry_price
+        
+        elif tp_level == 'tp3':
+            # Keep at breakeven (already moved after TP2)
+            # Could implement ATR trailing here in the future
+            return signal['stop_loss']  # Keep current stop
+        
+        return signal['stop_loss']  # Default: keep current
+    
     def _handle_tp_hit(self, symbol: str, tp_level: str) -> Dict:
         """Handle take profit hit"""
         signal = self.active_signals[symbol]
@@ -194,6 +231,14 @@ class SignalTracker:
         signal['realized_pnl'] += pnl
         signal['remaining_percent'] -= close_percent
         
+        # Apply trailing stop strategy
+        old_stop = signal['stop_loss']
+        new_stop = self._calculate_trailing_stop(signal, tp_level)
+        
+        if new_stop != old_stop:
+            signal['stop_loss'] = new_stop
+            logger.info(f"📈 Stop loss adjusted for {symbol}: ${old_stop:.4f} → ${new_stop:.4f} (Trailing after {tp_level.upper()})")
+        
         hit_info = {
             'type': 'tp_hit',
             'level': tp_level,
@@ -202,6 +247,7 @@ class SignalTracker:
             'pnl': pnl,
             'total_pnl': signal['realized_pnl'],
             'remaining_percent': signal['remaining_percent'],
+            'new_stop_loss': new_stop,
             'signal': signal.copy()  # Include signal data
         }
         

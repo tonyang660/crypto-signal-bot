@@ -132,40 +132,51 @@ class DiscordNotifier:
         price: float,
         pnl: float,
         total_pnl: float,
-        remaining_percent: int
+        remaining_percent: int,
+        new_stop_loss: float = None
     ) -> bool:
         """Send TP hit notification"""
         try:
+            fields = [
+                {
+                    "name": "Direction",
+                    "value": direction.upper(),
+                    "inline": True
+                },
+                {
+                    "name": "Exit Price",
+                    "value": self._format_price(price),
+                    "inline": True
+                },
+                {
+                    "name": "Partial PnL",
+                    "value": f"${pnl:+.2f}",
+                    "inline": True
+                },
+                {
+                    "name": "Total PnL",
+                    "value": f"${total_pnl:+.2f}",
+                    "inline": True
+                },
+                {
+                    "name": "Remaining Position",
+                    "value": f"{remaining_percent}%",
+                    "inline": True
+                }
+            ]
+            
+            # Add new stop loss if it was adjusted
+            if new_stop_loss is not None:
+                fields.append({
+                    "name": "🛡️ New Stop Loss",
+                    "value": self._format_price(new_stop_loss),
+                    "inline": True
+                })
+            
             embed = {
                 "title": f"🎯 {tp_level.upper()} HIT - {symbol}",
                 "color": 0xFFD700,  # Gold
-                "fields": [
-                    {
-                        "name": "Direction",
-                        "value": direction.upper(),
-                        "inline": True
-                    },
-                    {
-                        "name": "Exit Price",
-                        "value": self._format_price(price),
-                        "inline": True
-                    },
-                    {
-                        "name": "Partial PnL",
-                        "value": f"${pnl:+.2f}",
-                        "inline": True
-                    },
-                    {
-                        "name": "Total PnL",
-                        "value": f"${total_pnl:+.2f}",
-                        "inline": True
-                    },
-                    {
-                        "name": "Remaining Position",
-                        "value": f"{remaining_percent}%",
-                        "inline": True
-                    }
-                ],
+                "fields": fields,
                 "footer": {
                     "text": "BitGet Futures Signal Bot"
                 },

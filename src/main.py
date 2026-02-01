@@ -297,7 +297,8 @@ class SignalBot:
                         price=current_price,
                         pnl=hit_info['pnl'],
                         total_pnl=hit_info['total_pnl'],
-                        remaining_percent=hit_info['remaining_percent']
+                        remaining_percent=hit_info['remaining_percent'],
+                        new_stop_loss=hit_info.get('new_stop_loss')
                     )
                     
                     # Record partial profit immediately (affects daily PnL)
