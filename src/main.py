@@ -57,12 +57,12 @@ class SignalBot:
         
         # Send startup notification with combined stats
         risk_stats = self.risk_manager.get_risk_stats()
-        perf_stats = self.performance_logger.get_statistics(days=1)
+        today_stats = self.performance_logger.get_today_statistics()
         
         combined_stats = {
             'equity': risk_stats['equity'],
             'daily_pnl': risk_stats['daily_pnl'],  # Use daily_pnl which includes all wins and losses
-            'win_rate': perf_stats.get('win_rate', 0)
+            'win_rate': today_stats.get('win_rate', 0)  # Today's win rate only
         }
         
         self.discord.send_status_update(
@@ -342,22 +342,22 @@ class SignalBot:
     def send_daily_report(self):
         """Send daily performance report"""
         try:
-            stats = self.performance_logger.get_statistics(days=1)
+            today_stats = self.performance_logger.get_today_statistics()
             risk_stats = self.risk_manager.get_risk_stats()
             
             # Combine stats for Discord display
             combined_stats = {
                 'equity': risk_stats['equity'],
                 'daily_pnl': risk_stats['daily_pnl'],  # Shows actual daily P/L from risk manager
-                'win_rate': stats.get('win_rate', 0)
+                'win_rate': today_stats.get('win_rate', 0)  # Today's win rate only
             }
             
             message = f"""
 **Daily Performance Report**
 
-Trades: {stats.get('total_trades', 0)}
-Win Rate: {stats.get('win_rate', 0):.1f}%
-Total PnL: ${stats.get('total_pnl', 0):+.2f}
+Trades: {today_stats.get('total_trades', 0)}
+Win Rate: {today_stats.get('win_rate', 0):.1f}%
+Total PnL: ${today_stats.get('total_pnl', 0):+.2f}
 
 Account Equity: ${risk_stats['equity']:.2f}
 Daily PnL: ${risk_stats['daily_pnl']:+.2f}

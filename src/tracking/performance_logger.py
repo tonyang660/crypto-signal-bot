@@ -106,6 +106,63 @@ class PerformanceLogger:
             logger.error(f"Error calculating statistics: {e}")
             return {}
     
+    def get_today_statistics(self) -> Dict:
+        """Get statistics for today only (since midnight)"""
+        try:
+            # Get today's date at midnight
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            # Filter trades from today only
+            today_trades = [
+                t for t in self.trades 
+                if datetime.fromisoformat(t['timestamp']) >= today_start
+            ]
+            
+            if not today_trades:
+                return {
+                    'total_trades': 0,
+                    'win_rate': 0,
+                    'avg_win': 0,
+                    'avg_loss': 0,
+                    'total_pnl': 0,
+                    'profit_factor': 0
+                }
+            
+            # Calculate metrics
+            total_trades = len(today_trades)
+            wins = [t for t in today_trades if t['pnl'] > 0]
+            losses = [t for t in today_trades if t['pnl'] < 0]
+            
+            win_count = len(wins)
+            loss_count = len(losses)
+            win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
+            
+            avg_win = sum(t['pnl'] for t in wins) / win_count if win_count > 0 else 0
+            avg_loss = sum(t['pnl'] for t in losses) / loss_count if loss_count > 0 else 0
+            
+            total_pnl = sum(t['pnl'] for t in today_trades)
+            
+            gross_profit = sum(t['pnl'] for t in wins)
+            gross_loss = abs(sum(t['pnl'] for t in losses))
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
+            
+            return {
+                'total_trades': total_trades,
+                'wins': win_count,
+                'losses': loss_count,
+                'win_rate': round(win_rate, 2),
+                'avg_win': round(avg_win, 2),
+                'avg_loss': round(avg_loss, 2),
+                'total_pnl': round(total_pnl, 2),
+                'gross_profit': round(gross_profit, 2),
+                'gross_loss': round(gross_loss, 2),
+                'profit_factor': round(profit_factor, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating today's statistics: {e}")
+            return {'total_trades': 0, 'win_rate': 0}
+    
     def get_daily_pnl(self, days: int = 7) -> List[Dict]:
         """Get daily PnL for last N days"""
         try:
