@@ -32,6 +32,30 @@ class SignalTracker:
         if not Path(Config.HISTORY_SIGNALS_FILE).exists():
             self._save_history()
     
+    def get_total_margin_used(self) -> float:
+        """Calculate total margin currently used by all active signals"""
+        total_margin = 0.0
+        
+        for signal in self.active_signals.values():
+            # Get margin for remaining position percentage
+            position_size = signal.get('position_size', {})
+            margin_used = position_size.get('margin_used', 0)
+            remaining_pct = signal.get('remaining_percent', 100) / 100
+            
+            # Only count margin for the remaining open position
+            total_margin += margin_used * remaining_pct
+        
+        return total_margin
+    
+    def get_available_margin(self, total_equity: float) -> float:
+        """Calculate available margin for new positions"""
+        used_margin = self.get_total_margin_used()
+        available = total_equity - used_margin
+        
+        logger.debug(f"Margin: Total equity ${total_equity:.2f} | Used ${used_margin:.2f} | Available ${available:.2f}")
+        
+        return available
+    
     def can_create_signal(self, symbol: str) -> Tuple[bool, str]:
         """
         Check if new signal can be created for symbol

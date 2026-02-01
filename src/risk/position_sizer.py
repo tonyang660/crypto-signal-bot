@@ -43,7 +43,8 @@ class PositionSizer:
         account_equity: float,
         entry_price: float,
         stop_loss: float,
-        symbol: str
+        symbol: str,
+        available_margin: float = None
     ) -> Dict:
         """
         Calculate position size intelligently with dynamic leverage
@@ -54,11 +55,15 @@ class PositionSizer:
         3. Calculate position size to risk $20
         4. Apply isolated leverage to minimize margin per position
         5. Allow multiple concurrent positions without using full margin
+        6. Resize if insufficient margin available
         
         Dynamic Leverage Logic:
         - Tight stops (< 1%) suggest intraday/scalp → 10-12x leverage
         - Normal stops (1-2.5%) suggest 1-2 day trade → 7-9x leverage
         - Wide stops (> 3%) suggest swing trade → 5-6x leverage
+        
+        Args:
+            available_margin: Optional margin available for new position (if tracking total exposure)
         
         Returns:
             Dict with contracts, notional value, leverage, risk amount, margin used
@@ -88,6 +93,21 @@ class PositionSizer:
             # Calculate margin required for this position
             margin_required = position_size_usd / isolated_leverage
             margin_percent = (margin_required / account_equity) * 100
+            
+            # Check if we need to resize based on available margin
+            if available_margin is not None and margin_required > available_margin:
+                logger.warning(f"{symbol}: Insufficient margin! Need ${margin_required:.2f}, available ${available_margin:.2f}")
+                
+                # Resize position to fit available margin
+                # Keep the same leverage, just reduce position size
+                position_size_usd = available_margin * isolated_leverage
+                margin_required = available_margin
+                margin_percent = (margin_required / account_equity) * 100
+                
+                # Recalculate risk (will be less than target $20)
+                risk_amount = position_size_usd * stop_distance_pct
+                
+                logger.info(f"{symbol}: Position resized to ${position_size_usd:.2f} | Risk reduced to ${risk_amount:.2f}")
             
             # Sanity check: if single position requires >40% margin, INCREASE leverage to reduce margin
             # (This happens with very tight stops that create large positions)

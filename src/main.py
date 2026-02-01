@@ -86,6 +86,13 @@ class SignalBot:
             # Get active symbols
             active_symbols = self.signal_tracker.get_active_symbols()
             
+            # Log total exposure
+            if active_symbols:
+                total_margin = self.signal_tracker.get_total_margin_used()
+                available_margin = self.signal_tracker.get_available_margin(self.risk_manager.equity)
+                exposure_pct = (total_margin / self.risk_manager.equity) * 100
+                logger.info(f"💼 Total margin used: ${total_margin:.2f} ({exposure_pct:.1f}%) | Available: ${available_margin:.2f}")
+            
             # Scan each pair
             for symbol in Config.TRADING_PAIRS:
                 try:
@@ -223,12 +230,16 @@ class SignalBot:
                 current_price, stop_loss, direction
             )
             
-            # Calculate position size
+            # Get available margin (accounting for existing positions)
+            available_margin = self.signal_tracker.get_available_margin(self.risk_manager.equity)
+            
+            # Calculate position size with margin constraint
             position_size = PositionSizer.calculate_position_size(
                 self.risk_manager.equity,
                 current_price,
                 stop_loss,
-                symbol
+                symbol,
+                available_margin=available_margin
             )
             
             if not position_size:
