@@ -78,6 +78,18 @@ python -m src.main
 python check_signals.py
 ```
 
+**Remove historical signals (reverts equity/PnL impact):**
+```bash
+# Interactive mode - select which signals to remove
+python remove_signals.py
+
+# List all historical signals
+python remove_signals.py --list
+
+# Remove specific signal by ID
+python remove_signals.py --id SIGNAL_123456
+```
+
 **Run with Docker:**
 ```bash
 docker build -t bitget-signal-bot .
