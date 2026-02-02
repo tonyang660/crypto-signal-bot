@@ -37,12 +37,42 @@ class SignalRemover:
     """Remove signals and revert their impact"""
     
     def __init__(self):
+        # Check if files are accessible before loading
+        self._check_file_access()
+        
         self.signals_history = self._load_json(SIGNALS_HISTORY_FILE, [])
         self.trade_history = self._load_json(TRADE_HISTORY_FILE, [])
         self.performance = self._load_json(PERFORMANCE_FILE, {})
         
         # Ensure backup directory exists
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    
+    def _check_file_access(self):
+        """Check if data files are accessible (not locked)"""
+        locked_files = []
+        
+        for filepath in [SIGNALS_HISTORY_FILE, TRADE_HISTORY_FILE, PERFORMANCE_FILE]:
+            if filepath.exists():
+                try:
+                    # Try to open in read+write mode to check if locked
+                    with open(filepath, 'r+') as f:
+                        pass
+                except PermissionError:
+                    locked_files.append(filepath.name)
+                except Exception:
+                    pass
+        
+        if locked_files:
+            logger.error("\n" + "="*70)
+            logger.error("⚠️  ERROR: Cannot access the following files:")
+            for filename in locked_files:
+                logger.error(f"   • {filename}")
+            logger.error("\n🔧 SOLUTIONS:")
+            logger.error("   1. Stop the trading bot if it's running")
+            logger.error("   2. Close files if open in VS Code or other editors")
+            logger.error("   3. Close any JSON viewers")
+            logger.error("="*70 + "\n")
+            sys.exit(1)
     
     def _load_json(self, filepath: Path, default):
         """Load JSON file with error handling"""
@@ -60,6 +90,12 @@ class SignalRemover:
             with open(filepath, 'w') as f:
                 json.dump(data, f, indent=2)
             return True
+        except PermissionError:
+            logger.error(f"❌ Permission denied: {filepath}")
+            logger.error(f"   File is locked or open in another program!")
+            logger.error(f"   → Stop the bot if it's running")
+            logger.error(f"   → Close the file if open in editor/viewer")
+            return False
         except Exception as e:
             logger.error(f"Error saving {filepath}: {e}")
             return False
