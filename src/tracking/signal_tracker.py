@@ -111,7 +111,7 @@ class SignalTracker:
                 'score': score,
                 'entry_reason': entry_reason,
                 'status': 'active',
-                'created_at': datetime.now().isoformat(),
+                'entry_time': datetime.now().isoformat(),  # Use entry_time for consistency
                 'tp1_hit': False,
                 'tp2_hit': False,
                 'tp3_hit': False,
@@ -394,11 +394,13 @@ class SignalTracker:
             summary.append(f"   Unrealized P&L: ${unrealized:+.2f}")
             summary.append(f"   Total P&L: ${signal['realized_pnl'] + unrealized:+.2f}")
             
-            # Time info
-            entry_time = datetime.fromisoformat(signal['entry_time'])
-            duration = datetime.now() - entry_time
-            hours = duration.total_seconds() / 3600
-            summary.append(f"   Duration: {hours:.1f} hours")
+            # Time info - handle both 'entry_time' and 'created_at'
+            time_key = 'entry_time' if 'entry_time' in signal else 'created_at'
+            if time_key in signal:
+                entry_time = datetime.fromisoformat(signal[time_key])
+                duration = datetime.now() - entry_time
+                hours = duration.total_seconds() / 3600
+                summary.append(f"   Duration: {hours:.1f} hours")
             summary.append("")
         
         summary.append(f"{'='*70}\n")
