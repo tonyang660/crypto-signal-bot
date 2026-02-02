@@ -108,11 +108,12 @@ This displays:
 ## Risk Management
 
 - **Max risk per trade:** 1% ($20 on $2000 account)
-- **Max daily loss:** 2% ($40)
-- **Max weekly loss:** 6% ($120)
-- **Max consecutive losses:** 3 (triggers 4-hour cooldown)
+- **Consecutive loss protection:** 3 losses triggers 4-hour cooldown ⭐ PRIMARY
+- **Max weekly loss:** 6% ($120) - Hard stop for the week
 - **Max leverage:** 3× effective
 - **Max active signals:** 3 total, 1 per pair, 1 BTC max
+
+**Note:** Daily loss limit removed in favor of consecutive loss cooldown, which is more responsive to actual trading conditions.
 
 ## Signal Rules
 

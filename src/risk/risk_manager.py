@@ -53,12 +53,9 @@ class RiskManager:
                 self.consecutive_losses = 0  # Reset the counter
                 self._save_state()
         
-        # Check daily loss limit based on NET daily PnL (not just losses)
-        # Only stop trading if NET daily PnL is negative and exceeds limit
-        if self.daily_pnl < 0:
-            daily_loss_pct = abs(self.daily_pnl / self.equity)
-            if daily_loss_pct >= Config.MAX_DAILY_LOSS:
-                return False, f"🛑 Daily loss limit hit: ${self.daily_pnl:.2f} ({daily_loss_pct*100:.1f}%)"
+        # Daily loss limit REMOVED - relying on consecutive loss cooldown instead
+        # This allows recovery trades during the same day if conditions improve
+        # The consecutive loss check + cooldown provides better risk management
         
         # Check weekly loss limit based on NET weekly PnL
         if self.weekly_loss < 0:
