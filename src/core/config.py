@@ -82,6 +82,7 @@ class Config:
     # Volatility Filters
     VOLATILITY_MIN_RATIO = 0.7
     VOLATILITY_MAX_RATIO = 2.0
+    EXTREME_VOLATILITY_MULTIPLIER = 3.0  # Suspend trading if ATR is 3x normal (likely news event)
     
     # ==================== SIGNAL MANAGEMENT ====================
     MAX_ACTIVE_SIGNALS_PER_PAIR = 1

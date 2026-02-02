@@ -18,6 +18,7 @@ class RiskManager:
         self.cooldown_until: Optional[datetime] = None
         self.last_reset_date = datetime.now().date()
         self.last_weekly_reset = datetime.now().date()
+        self.last_volatility_alert: Optional[datetime] = None
         
         # Load persisted state
         self._load_state()
@@ -228,3 +229,39 @@ class RiskManager:
             
         except Exception as e:
             logger.warning(f"Could not load risk manager state: {e}")
+
+    def check_extreme_volatility(self, symbol: str, data: dict) -> Tuple[bool, str]:
+        """Check if market has extreme volatility suggesting news event
+    
+        Args:
+            symbol: Trading symbol
+            data: Market data dict with 'primary' dataframe
+    
+        Returns:
+            (is_extreme: bool, reason: str)
+        """
+        try:
+            primary_df = data.get('primary')
+            if primary_df is None or 'atr' not in primary_df.columns:
+                return False, ""
+            
+            # Get current ATR and 20-period average
+            current_atr = primary_df['atr'].iloc[-1]
+            
+            # Calculate rolling average ATR (20 periods)
+            atr_sma = primary_df['atr'].rolling(window=20).mean().iloc[-1]
+            
+            if atr_sma == 0 or atr_sma is None:
+                return False, ""
+            
+            atr_ratio = current_atr / atr_sma
+            
+            # If ATR is 3x or more than normal, likely a major news event
+            if atr_ratio >= Config.EXTREME_VOLATILITY_MULTIPLIER:
+                return True, f"⚠️ Extreme volatility detected on {symbol}: ATR is {atr_ratio:.1f}x normal (likely news event)"
+            
+            return False, ""
+            
+        except Exception as e:
+            logger.error(f"Error checking volatility for {symbol}: {e}")
+            return False, ""

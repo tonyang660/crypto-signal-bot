@@ -154,6 +154,20 @@ class SignalBot:
                 logger.info(f"{symbol}: ❌ Unfavorable regime ({regime}) | Min threshold: {threshold}")
                 return
             
+            # Check for extreme volatility (likely news event)
+            is_extreme, vol_reason = self.risk_manager.check_extreme_volatility(symbol, data)
+            if is_extreme:
+                logger.warning(f"{symbol}: {vol_reason}")
+                
+                # Alert Discord only once per hour to avoid spam
+                now = datetime.now()
+                if (self.risk_manager.last_volatility_alert is None or 
+                    (now - self.risk_manager.last_volatility_alert).total_seconds() > 3600):
+                    self.discord.send_error(vol_reason)
+                    self.risk_manager.last_volatility_alert = now
+                
+                return  # Skip this symbol
+
             logger.info(f"{symbol}: ✓ Regime check passed ({regime}) | Min threshold: {threshold}")
             
             # Check for long entry
