@@ -132,21 +132,31 @@ class RiskManager:
             'cooldown_until': self.cooldown_until.isoformat() if self.cooldown_until else None
         }
     
-    def _check_daily_reset(self) -> None:
-        """Reset daily counters if new day"""
+    def _check_daily_reset(self, skip_reset: bool = False) -> bool:
+        """Check if new day and optionally reset daily counters
+        
+        Args:
+            skip_reset: If True, only check without resetting (for pre-reset report generation)
+        
+        Returns:
+            True if it's a new day
+        """
         today = datetime.now().date()
         if today > self.last_reset_date:
-            logger.info(f"📅 New day - resetting daily counters")
-            self.daily_pnl = 0.0  # Reset daily PnL
-            self.daily_loss = 0.0
-            self.last_reset_date = today
-            
-            # Clear cooldown if weekly limit not hit
-            if abs(self.weekly_loss / self.equity) < Config.MAX_WEEKLY_LOSS:
-                self.trading_enabled = True
-                self.cooldown_until = None
-            
-            self._save_state()
+            if not skip_reset:
+                logger.info(f"📅 New day - resetting daily counters")
+                self.daily_pnl = 0.0  # Reset daily PnL
+                self.daily_loss = 0.0
+                self.last_reset_date = today
+                
+                # Clear cooldown if weekly limit not hit
+                if abs(self.weekly_loss / self.equity) < Config.MAX_WEEKLY_LOSS:
+                    self.trading_enabled = True
+                    self.cooldown_until = None
+                
+                self._save_state()
+            return True
+        return False
     
     def _check_weekly_reset(self) -> None:
         """Reset weekly counters if new week (Monday)"""

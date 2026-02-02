@@ -204,6 +204,50 @@ class PerformanceLogger:
         except Exception as e:
             logger.error(f"Error saving trades: {e}")
     
+    def save_daily_report(self) -> Dict:
+        """Save daily report to permanent log file and return the stats"""
+        try:
+            today_stats = self.get_today_statistics()
+            
+            # Create daily log entry
+            daily_log = {
+                'date': datetime.now().date().isoformat(),
+                'timestamp': datetime.now().isoformat(),
+                'total_trades': today_stats.get('total_trades', 0),
+                'wins': today_stats.get('wins', 0),
+                'losses': today_stats.get('losses', 0),
+                'win_rate': today_stats.get('win_rate', 0),
+                'avg_win': today_stats.get('avg_win', 0),
+                'avg_loss': today_stats.get('avg_loss', 0),
+                'total_pnl': today_stats.get('total_pnl', 0),
+                'gross_profit': today_stats.get('gross_profit', 0),
+                'gross_loss': today_stats.get('gross_loss', 0),
+                'profit_factor': today_stats.get('profit_factor', 0)
+            }
+            
+            # Load existing daily logs
+            daily_logs_file = Path(Config.DATA_DIR) / 'daily_logs.json'
+            daily_logs = []
+            
+            if daily_logs_file.exists():
+                with open(daily_logs_file, 'r') as f:
+                    daily_logs = json.load(f)
+            
+            # Add today's log
+            daily_logs.append(daily_log)
+            
+            # Save updated logs
+            with open(daily_logs_file, 'w') as f:
+                json.dump(daily_logs, f, indent=2)
+            
+            logger.info(f"📊 Daily report saved: {today_stats.get('total_trades', 0)} trades, ${today_stats.get('total_pnl', 0):+.2f}")
+            
+            return today_stats
+            
+        except Exception as e:
+            logger.error(f"Error saving daily report: {e}")
+            return {}
+    
     def _load_trades(self) -> None:
         """Load trades from file"""
         try:

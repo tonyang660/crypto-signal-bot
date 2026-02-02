@@ -77,7 +77,12 @@ class SignalBot:
             logger.info(f"🔍 Scanning markets at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info("=" * 70)
             
-            # Check if trading is allowed
+            # Check if it's a new day (before reset) and send daily report
+            if self.risk_manager._check_daily_reset(skip_reset=True):
+                logger.info("📊 New day detected - Generating daily report before reset")
+                self.send_daily_report()
+            
+            # Check if trading is allowed (this will reset counters after report)
             can_trade, reason = self.risk_manager.can_trade()
             if not can_trade:
                 logger.warning(f"Trading disabled: {reason}")
@@ -352,9 +357,10 @@ class SignalBot:
             logger.error(f"Error updating signal for {symbol}: {e}")
     
     def send_daily_report(self):
-        """Send daily performance report"""
+        """Send daily performance report (called BEFORE daily reset)"""
         try:
-            today_stats = self.performance_logger.get_today_statistics()
+            # Save report to permanent log first
+            today_stats = self.performance_logger.save_daily_report()
             risk_stats = self.risk_manager.get_risk_stats()
             
             # Combine stats for Discord display
@@ -376,7 +382,7 @@ Daily PnL: ${risk_stats['daily_pnl']:+.2f}
 """
             
             self.discord.send_status_update(message, combined_stats)
-            logger.info("📊 Daily report sent")
+            logger.info("📊 Daily report sent and saved to logs")
             
         except Exception as e:
             logger.error(f"Error sending daily report: {e}")
@@ -415,13 +421,10 @@ if __name__ == "__main__":
     if '--single-run' in sys.argv:
         # Run once then exit (for GitHub Actions)
         logger.info("🔄 Running in single-scan mode (GitHub Actions)")
-        bot.scan_markets()
         
-        # Check if daily report should be sent (only at 00:05)
-        current_time = datetime.now()
-        if current_time.hour == 0 and 0 <= current_time.minute <= 9:
-            bot.send_daily_report()
-            logger.info(f"📊 Daily report sent at {current_time.strftime('%H:%M')}")
+        # Note: scan_markets() now handles daily report generation automatically
+        # when a new day is detected (before reset)
+        bot.scan_markets()
         
         logger.info("✅ Single scan complete, exiting")
     else:

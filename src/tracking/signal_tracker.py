@@ -307,7 +307,7 @@ class SignalTracker:
         
         hit_info = {
             'type': 'stop_hit',
-            'price': signal['current_price'],
+            'price': stop_price,  # Use actual SL price, not current market price (simulates real order execution)
             'loss': loss,
             'total_pnl': total_pnl,
             'signal': signal.copy()  # Include signal data before closing
