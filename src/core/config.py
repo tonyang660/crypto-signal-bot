@@ -57,7 +57,7 @@ class Config:
     # ==================== STRATEGY PARAMETERS ====================
     # Indicators
     ATR_PERIOD = 14
-    ATR_STOP_MULTIPLIER = 1.5
+    ATR_STOP_MULTIPLIER = 2.0  # Increased from 1.5 to give trades more breathing room
     EMA_FAST = 21
     EMA_MEDIUM = 50
     EMA_SLOW = 200

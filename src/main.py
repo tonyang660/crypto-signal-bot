@@ -82,32 +82,42 @@ class SignalBot:
                 logger.info("📊 New day detected - Generating daily report before reset")
                 self.send_daily_report()
             
-            # Check if trading is allowed (this will reset counters after report)
-            can_trade, reason = self.risk_manager.can_trade()
-            if not can_trade:
-                logger.warning(f"Trading disabled: {reason}")
-                return
-            
-            # Get active symbols
+            # Get active symbols (do this BEFORE trading check to monitor existing signals)
             active_symbols = self.signal_tracker.get_active_symbols()
             
-            # Log total exposure
+            # ALWAYS update existing signals first (even if trading is disabled)
             if active_symbols:
-                total_margin = self.signal_tracker.get_total_margin_used()
-                available_margin = self.signal_tracker.get_available_margin(self.risk_manager.equity)
-                exposure_pct = (total_margin / self.risk_manager.equity) * 100
-                logger.info(f"💼 Total margin used: ${total_margin:.2f} ({exposure_pct:.1f}%) | Available: ${available_margin:.2f}")
+                logger.info(f"📊 Monitoring {len(active_symbols)} active signal(s): {', '.join(active_symbols)}")
+                for symbol in active_symbols:
+                    try:
+                        self._update_active_signal(symbol)
+                    except Exception as e:
+                        logger.error(f"Error updating {symbol}: {e}")
             
-            # Scan each pair
+            # Check if trading is allowed for NEW signals
+            can_trade, reason = self.risk_manager.can_trade()
+            if not can_trade:
+                logger.warning(f"Trading disabled for new signals: {reason}")
+                if active_symbols:
+                    logger.info(f"✓ Continuing to monitor {len(active_symbols)} existing signal(s)")
+                return
+            
+            # Log total exposure
+            total_margin = self.signal_tracker.get_total_margin_used()
+            available_margin = self.signal_tracker.get_available_margin(self.risk_manager.equity)
+            exposure_pct = (total_margin / self.risk_manager.equity) * 100 if self.risk_manager.equity > 0 else 0
+            logger.info(f"💼 Total margin used: ${total_margin:.2f} ({exposure_pct:.1f}%) | Available: ${available_margin:.2f}")
+            
+            # Scan each pair for NEW signals
             for symbol in Config.TRADING_PAIRS:
                 try:
-                    # Check if signal already exists for this pair
-                    can_create, reason = self.signal_tracker.can_create_signal(symbol)
-                    
+                    # Skip if signal already exists (already updated above)
                     if symbol in active_symbols:
-                        # Update existing signal
-                        self._update_active_signal(symbol)
+                        logger.debug(f"{symbol}: Active signal already being monitored")
                         continue
+                    
+                    # Check if new signal can be created
+                    can_create, reason = self.signal_tracker.can_create_signal(symbol)
                     
                     if not can_create:
                         logger.debug(f"Skipping {symbol}: {reason}")
@@ -123,6 +133,11 @@ class SignalBot:
             # Log summary
             active_count = len(self.signal_tracker.get_all_active_signals())
             logger.info(f"✓ Scan complete | Active signals: {active_count}")
+            
+            # Show detailed active signals summary if any exist
+            if active_count > 0:
+                summary = self.signal_tracker.get_active_signals_summary()
+                logger.info(summary)
             
         except Exception as e:
             logger.error(f"Error in scan_markets: {e}")

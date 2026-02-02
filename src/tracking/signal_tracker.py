@@ -353,6 +353,57 @@ class SignalTracker:
         """Get list of symbols with active signals"""
         return list(self.active_signals.keys())
     
+    def get_active_signals_summary(self) -> str:
+        """Get a formatted summary of all active signals with current status"""
+        if not self.active_signals:
+            return "No active signals"
+        
+        summary = []
+        summary.append(f"\n{'='*70}")
+        summary.append(f"ACTIVE SIGNALS ({len(self.active_signals)})")
+        summary.append(f"{'='*70}\n")
+        
+        for symbol, signal in self.active_signals.items():
+            direction_emoji = "🟢" if signal['direction'] == 'long' else "🔴"
+            summary.append(f"{direction_emoji} {symbol} - {signal['direction'].upper()}")
+            summary.append(f"   Entry: ${signal['entry_price']:.4f}")
+            summary.append(f"   Current: ${signal.get('current_price', 0):.4f}")
+            summary.append(f"   Stop Loss: ${signal['stop_loss']:.4f}")
+            
+            # Show TP status
+            tp_status = []
+            for tp in ['tp1', 'tp2', 'tp3']:
+                if signal.get(f'{tp}_hit'):
+                    tp_status.append(f"✅{tp.upper()}")
+                else:
+                    price = signal['take_profits'][tp]['price']
+                    tp_status.append(f"⏳{tp.upper()}(${price:.4f})")
+            summary.append(f"   TPs: {' | '.join(tp_status)}")
+            
+            # Show position status
+            summary.append(f"   Position: {signal['remaining_percent']:.0f}% open")
+            summary.append(f"   Realized P&L: ${signal['realized_pnl']:+.2f}")
+            
+            # Calculate unrealized P&L
+            current_price = signal.get('current_price', signal['entry_price'])
+            remaining_contracts = signal['position_size']['contracts'] * (signal['remaining_percent'] / 100)
+            if signal['direction'] == 'long':
+                unrealized = (current_price - signal['entry_price']) * remaining_contracts
+            else:
+                unrealized = (signal['entry_price'] - current_price) * remaining_contracts
+            summary.append(f"   Unrealized P&L: ${unrealized:+.2f}")
+            summary.append(f"   Total P&L: ${signal['realized_pnl'] + unrealized:+.2f}")
+            
+            # Time info
+            entry_time = datetime.fromisoformat(signal['entry_time'])
+            duration = datetime.now() - entry_time
+            hours = duration.total_seconds() / 3600
+            summary.append(f"   Duration: {hours:.1f} hours")
+            summary.append("")
+        
+        summary.append(f"{'='*70}\n")
+        return "\n".join(summary)
+    
     def manually_close_signal(self, symbol: str, reason: str = "manual") -> bool:
         """Manually close a signal"""
         if symbol in self.active_signals:

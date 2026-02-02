@@ -73,11 +73,37 @@ MAX_WEEKLY_LOSS=0.06
 python -m src.main
 ```
 
+**Check active signals status:**
+```bash
+python check_signals.py
+```
+
 **Run with Docker:**
 ```bash
 docker build -t bitget-signal-bot .
 docker run -d --env-file .env bitget-signal-bot
 ```
+
+## Active Signal Monitoring
+
+The bot **continuously monitors active signals even when trading is disabled** for the day (e.g., due to daily loss limits or consecutive losses). This ensures:
+
+- ✅ Take profit targets are always monitored
+- ✅ Stop losses are always enforced
+- ✅ Signals are properly closed when TP/SL is hit
+- ✅ Performance tracking remains accurate
+
+**To check your active signals at any time:**
+```bash
+python check_signals.py
+```
+
+This displays:
+- Current price vs entry price
+- Distance to stop loss
+- Distance to each take profit level
+- Realized and unrealized P&L
+- Position size and duration
 
 ## Risk Management
 
@@ -93,8 +119,9 @@ docker run -d --env-file .env bitget-signal-bot
 ✅ **Creates signal when:**
 - HTF trend aligns with direction
 - Volatility within acceptable range (0.7-2.0× avg ATR)
-- MACD momentum confirms direction
+- **MACD momentum confirms direction AND is strengthening** ⭐ NEW
 - Price near EMA21 pullback
+- **Clear distance from recent swing highs/lows (0.5× ATR minimum)** ⭐ NEW
 - Volume above average
 - Signal score ≥ 70 (or 85 during drawdown)
 
@@ -102,7 +129,7 @@ docker run -d --env-file .env bitget-signal-bot
 - TP1 hit (closes 50%)
 - TP2 hit (closes 30%)
 - TP3 hit (closes remaining 20%)
-- Stop loss hit (closes all)
+- Stop loss hit (closes all - now 2.0× ATR for better survivability) ⭐ IMPROVED
 
 ## Discord Notifications
 
