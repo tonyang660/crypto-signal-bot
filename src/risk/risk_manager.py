@@ -41,9 +41,17 @@ class RiskManager:
         self._check_weekly_reset()
         
         # Check cooldown
-        if self.cooldown_until and datetime.now() < self.cooldown_until:
-            remaining = (self.cooldown_until - datetime.now()).total_seconds() / 3600
-            return False, f"⏸️ Cooldown active for {remaining:.1f} more hours"
+        if self.cooldown_until:
+            if datetime.now() < self.cooldown_until:
+                # Cooldown still active
+                remaining = (self.cooldown_until - datetime.now()).total_seconds() / 3600
+                return False, f"⏸️ Cooldown active for {remaining:.1f} more hours"
+            else:
+                # Cooldown expired - clear it and reset consecutive losses
+                logger.info("✅ Cooldown period ended - Resetting consecutive losses counter")
+                self.cooldown_until = None
+                self.consecutive_losses = 0  # Reset the counter
+                self._save_state()
         
         # Check daily loss limit based on NET daily PnL (not just losses)
         # Only stop trading if NET daily PnL is negative and exceeds limit
