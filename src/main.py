@@ -244,6 +244,10 @@ class SignalBot:
             # Get current price
             current_price = data['entry']['close'].iloc[-1]
             
+            # Detect market regime for adaptive TP targets
+            regime = RegimeDetector.detect_regime(data['primary'])
+            logger.info(f"{symbol}: Market regime detected: {regime}")
+            
             # Check score threshold
             account_state = self.risk_manager.get_account_state()
             threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
@@ -259,9 +263,9 @@ class SignalBot:
                 data, direction, current_price
             )
             
-            # Calculate take profits
+            # Calculate take profits (regime-adjusted)
             take_profits = StopTPCalculator.calculate_take_profits(
-                current_price, stop_loss, direction
+                current_price, stop_loss, direction, regime
             )
             
             # Get available margin (accounting for existing positions)
@@ -295,7 +299,8 @@ class SignalBot:
                 take_profits=take_profits,
                 position_size=position_size,
                 score=score,
-                entry_reason=entry_reason
+                entry_reason=entry_reason,
+                regime=regime  # Add regime for tracking
             )
             
             if signal_id:
@@ -351,6 +356,10 @@ class SignalBot:
                     
                     # Log full trade if position fully closed
                     if hit_info['remaining_percent'] == 0:
+                        # Calculate duration
+                        entry_time = datetime.fromisoformat(signal.get('entry_time', signal.get('created_at', datetime.now().isoformat())))
+                        duration = (datetime.now() - entry_time).total_seconds() / 3600
+                        
                         self.performance_logger.log_trade(
                             signal_id=signal['signal_id'],
                             symbol=symbol,
@@ -358,7 +367,10 @@ class SignalBot:
                             entry_price=signal['entry_price'],
                             exit_price=current_price,
                             pnl=hit_info['total_pnl'],
-                            exit_reason='completed'
+                            exit_reason='completed',
+                            regime=signal.get('regime', 'unknown'),
+                            score=signal.get('score', 0),
+                            duration_hours=duration
                         )
                 
                 elif hit_info['type'] == 'stop_hit':
@@ -370,6 +382,10 @@ class SignalBot:
                         total_pnl=hit_info['total_pnl']
                     )
                     
+                    # Calculate duration
+                    entry_time = datetime.fromisoformat(signal.get('entry_time', signal.get('created_at', datetime.now().isoformat())))
+                    duration = (datetime.now() - entry_time).total_seconds() / 3600
+                    
                     # Record trade
                     self.performance_logger.log_trade(
                         signal_id=signal['signal_id'],
@@ -378,7 +394,10 @@ class SignalBot:
                         entry_price=signal['entry_price'],
                         exit_price=current_price,
                         pnl=hit_info['total_pnl'],
-                        exit_reason='stopped'
+                        exit_reason='stopped',
+                        regime=signal.get('regime', 'unknown'),
+                        score=signal.get('score', 0),
+                        duration_hours=duration
                     )
                     self.risk_manager.record_trade(hit_info['total_pnl'])
             

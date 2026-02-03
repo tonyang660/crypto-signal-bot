@@ -20,9 +20,12 @@ class PerformanceLogger:
         entry_price: float,
         exit_price: float,
         pnl: float,
-        exit_reason: str
+        exit_reason: str,
+        regime: str = 'unknown',
+        score: int = 0,
+        duration_hours: float = 0
     ) -> None:
-        """Log completed trade"""
+        """Log completed trade with regime and analytics data"""
         try:
             trade = {
                 'signal_id': signal_id,
@@ -33,7 +36,12 @@ class PerformanceLogger:
                 'pnl': pnl,
                 'pnl_percent': (pnl / (entry_price * 0.01)) if entry_price > 0 else 0,
                 'exit_reason': exit_reason,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                # Analytics additions
+                'regime': regime,
+                'score': score,
+                'duration_hours': round(duration_hours, 2),
+                'hour_of_day': datetime.now().hour
             }
             
             self.trades.append(trade)

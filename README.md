@@ -78,6 +78,11 @@ python -m src.main
 python check_signals.py
 ```
 
+**Analyze performance by regime, symbol, time:**
+```bash
+python analytics.py
+```
+
 **Remove historical signals (reverts equity/PnL impact):**
 ```bash
 # Interactive mode - select which signals to remove

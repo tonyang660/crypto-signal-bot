@@ -88,10 +88,14 @@ class SignalTracker:
         take_profits: Dict,
         position_size: Dict,
         score: int,
-        entry_reason: str
+        entry_reason: str,
+        regime: str = 'unknown'
     ) -> str:
         """
         Create new signal
+        
+        Args:
+            regime: Market regime at entry (for analytics)
         
         Returns:
             Signal ID
@@ -110,6 +114,7 @@ class SignalTracker:
                 'position_size': position_size,
                 'score': score,
                 'entry_reason': entry_reason,
+                'regime': regime,  # Store regime for analytics
                 'status': 'active',
                 'entry_time': datetime.now().isoformat(),  # Use entry_time for consistency
                 'tp1_hit': False,
@@ -365,7 +370,10 @@ class SignalTracker:
         
         for symbol, signal in self.active_signals.items():
             direction_emoji = "🟢" if signal['direction'] == 'long' else "🔴"
-            summary.append(f"{direction_emoji} {symbol} - {signal['direction'].upper()}")
+            regime = signal.get('regime', 'unknown')
+            regime_emoji = {"trending": "📈", "high_volatility": "⚡", "choppy": "〰️", "low_volatility": "💤"}.get(regime, "❓")
+            
+            summary.append(f"{direction_emoji} {symbol} - {signal['direction'].upper()} | {regime_emoji} {regime}")
             summary.append(f"   Entry: ${signal['entry_price']:.4f}")
             summary.append(f"   Current: ${signal.get('current_price', 0):.4f}")
             summary.append(f"   Stop Loss: ${signal['stop_loss']:.4f}")

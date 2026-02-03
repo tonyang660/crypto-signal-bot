@@ -104,33 +104,67 @@ class StopTPCalculator:
     def calculate_take_profits(
         entry_price: float,
         stop_loss: float,
-        direction: str
+        direction: str,
+        regime: str = 'trending'
     ) -> Dict[str, Dict]:
         """
-        Calculate TP levels based on risk multiples
+        Calculate TP levels based on risk multiples, adjusted for market regime
+        
+        Regime adjustments:
+        - trending: Full TP targets (let winners run)
+        - high_volatility: Tighter TPs (take profits faster before reversal)
+        - choppy/low_volatility: Very tight TPs (scalp mode)
+        
+        Args:
+            entry_price: Entry price
+            stop_loss: Stop loss price
+            direction: 'long' or 'short'
+            regime: Market regime from RegimeDetector
         
         Returns:
             Dict with tp1, tp2, tp3 containing price and close_percent
         """
         try:
+            # Adjust TP ratios based on regime
+            if regime == 'trending':
+                # Let winners run in strong trends
+                tp1_ratio = Config.TP1_RATIO
+                tp2_ratio = Config.TP2_RATIO
+                tp3_ratio = Config.TP3_RATIO
+                logger.debug(f"Regime '{regime}': Using full TP targets")
+                
+            elif regime == 'high_volatility':
+                # Take profits faster in volatile markets (prevents giveback)
+                tp1_ratio = Config.TP1_RATIO * 0.8  # 1.5 → 1.2
+                tp2_ratio = Config.TP2_RATIO * 0.8  # 2.5 → 2.0
+                tp3_ratio = Config.TP3_RATIO * 0.8  # 3.5 → 2.8
+                logger.info(f"Regime '{regime}': Tighter TPs (80% of normal)")
+                
+            else:  # choppy or low_volatility
+                # Very conservative in choppy markets
+                tp1_ratio = Config.TP1_RATIO * 0.6  # 1.5 → 0.9
+                tp2_ratio = Config.TP2_RATIO * 0.6  # 2.5 → 1.5
+                tp3_ratio = Config.TP3_RATIO * 0.6  # 3.5 → 2.1
+                logger.info(f"Regime '{regime}': Very tight TPs (60% of normal) - scalp mode")
+            
             if direction == 'long':
                 risk = entry_price - stop_loss
                 
                 return {
                     'tp1': {
-                        'price': StopTPCalculator._smart_round(entry_price + (risk * Config.TP1_RATIO)),
+                        'price': StopTPCalculator._smart_round(entry_price + (risk * tp1_ratio)),
                         'close_percent': Config.TP1_CLOSE_PERCENT,
-                        'ratio': Config.TP1_RATIO
+                        'ratio': tp1_ratio
                     },
                     'tp2': {
-                        'price': StopTPCalculator._smart_round(entry_price + (risk * Config.TP2_RATIO)),
+                        'price': StopTPCalculator._smart_round(entry_price + (risk * tp2_ratio)),
                         'close_percent': Config.TP2_CLOSE_PERCENT,
-                        'ratio': Config.TP2_RATIO
+                        'ratio': tp2_ratio
                     },
                     'tp3': {
-                        'price': StopTPCalculator._smart_round(entry_price + (risk * Config.TP3_RATIO)),
+                        'price': StopTPCalculator._smart_round(entry_price + (risk * tp3_ratio)),
                         'close_percent': Config.TP3_CLOSE_PERCENT,
-                        'ratio': Config.TP3_RATIO
+                        'ratio': tp3_ratio
                     }
                 }
             
@@ -139,19 +173,19 @@ class StopTPCalculator:
                 
                 return {
                     'tp1': {
-                        'price': StopTPCalculator._smart_round(entry_price - (risk * Config.TP1_RATIO)),
+                        'price': StopTPCalculator._smart_round(entry_price - (risk * tp1_ratio)),
                         'close_percent': Config.TP1_CLOSE_PERCENT,
-                        'ratio': Config.TP1_RATIO
+                        'ratio': tp1_ratio
                     },
                     'tp2': {
-                        'price': StopTPCalculator._smart_round(entry_price - (risk * Config.TP2_RATIO)),
+                        'price': StopTPCalculator._smart_round(entry_price - (risk * tp2_ratio)),
                         'close_percent': Config.TP2_CLOSE_PERCENT,
-                        'ratio': Config.TP2_RATIO
+                        'ratio': tp2_ratio
                     },
                     'tp3': {
-                        'price': StopTPCalculator._smart_round(entry_price - (risk * Config.TP3_RATIO)),
+                        'price': StopTPCalculator._smart_round(entry_price - (risk * tp3_ratio)),
                         'close_percent': Config.TP3_CLOSE_PERCENT,
-                        'ratio': Config.TP3_RATIO
+                        'ratio': tp3_ratio
                     }
                 }
                 
