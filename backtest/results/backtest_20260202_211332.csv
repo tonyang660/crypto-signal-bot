@@ -1,0 +1,2 @@
+symbol,direction,entry_time,entry_price,exit_time,exit_price,pnl,pnl_percent,exit_reason,regime,score,duration_hours
+BTCUSDT,short,2026-02-02 18:30:00,78685.4376,2026-02-02 21:10:00,78348.65475,7.0611767694531755,0.31824706940119146,backtest_end,trending,80,2.6666666666666665

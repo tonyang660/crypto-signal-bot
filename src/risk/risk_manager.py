@@ -12,10 +12,12 @@ class RiskManager:
         self.equity = Config.INITIAL_CAPITAL
         self.daily_loss = 0.0
         self.weekly_loss = 0.0
+        self.weekly_pnl = 0.0  # Track all weekly PnL (wins and losses)
         self.daily_pnl = 0.0  # Track all daily PnL (wins and losses)
         self.consecutive_losses = 0
         self.trading_enabled = True
         self.cooldown_until: Optional[datetime] = None
+        self.weekly_cooldown_until: Optional[datetime] = None  # Separate 24h cooldown for weekly limit
         self.last_reset_date = datetime.now().date()
         self.last_weekly_reset = datetime.now().date()
         self.last_volatility_alert: Optional[datetime] = None
@@ -57,11 +59,26 @@ class RiskManager:
         # This allows recovery trades during the same day if conditions improve
         # The consecutive loss check + cooldown provides better risk management
         
-        # Check weekly loss limit based on NET weekly PnL
-        if self.weekly_loss < 0:
-            weekly_loss_pct = abs(self.weekly_loss / self.equity)
+        # Check weekly cooldown (24-hour pause when weekly limit hit)
+        if self.weekly_cooldown_until:
+            if datetime.now() < self.weekly_cooldown_until:
+                remaining = (self.weekly_cooldown_until - datetime.now()).total_seconds() / 3600
+                return False, f"⏸️ Weekly limit cooldown active for {remaining:.1f} more hours (Weekly PnL: ${self.weekly_pnl:.2f})"
+            else:
+                # Cooldown expired - clear it
+                logger.info("✅ Weekly cooldown period ended")
+                self.weekly_cooldown_until = None
+                self._save_state()
+        
+        # Check weekly loss limit based on NET weekly PNL (total wins + losses)
+        if self.weekly_pnl < 0:
+            weekly_loss_pct = abs(self.weekly_pnl / self.equity)
             if weekly_loss_pct >= Config.MAX_WEEKLY_LOSS:
-                return False, f"🛑 Weekly loss limit hit: ${self.weekly_loss:.2f} ({weekly_loss_pct*100:.1f}%)"
+                # Activate 24-hour cooldown instead of disabling for entire week
+                self.weekly_cooldown_until = datetime.now() + timedelta(hours=24)
+                logger.warning(f"⏸️ Weekly loss limit triggered - 24h cooldown until {self.weekly_cooldown_until.strftime('%Y-%m-%d %H:%M')}")
+                self._save_state()
+                return False, f"🛑 Weekly loss limit hit: ${self.weekly_pnl:.2f} ({weekly_loss_pct*100:.1f}%) - 24h pause"
         
         # Check consecutive losses
         if self.consecutive_losses >= Config.MAX_CONSECUTIVE_LOSSES:
@@ -83,6 +100,9 @@ class RiskManager:
             
             # Track daily PnL (all trades)
             self.daily_pnl += pnl
+            
+            # Track weekly PnL (all trades - wins and losses)
+            self.weekly_pnl += pnl
             
             if pnl < 0:
                 # Record loss
@@ -132,10 +152,13 @@ class RiskManager:
             'daily_loss': self.daily_loss,  # Keep for tracking purposes
             'daily_pnl_pct': (self.daily_pnl / self.equity) * 100 if self.equity > 0 else 0,  # Net daily P&L percentage
             'weekly_loss': self.weekly_loss,
+            'weekly_pnl': self.weekly_pnl,  # Total weekly PnL (wins + losses)
+            'weekly_pnl_pct': (self.weekly_pnl / self.equity) * 100 if self.equity > 0 else 0,
             'weekly_loss_pct': abs(self.weekly_loss / self.equity) * 100,
             'consecutive_losses': self.consecutive_losses,
             'trading_enabled': self.trading_enabled,
-            'cooldown_until': self.cooldown_until.isoformat() if self.cooldown_until else None
+            'cooldown_until': self.cooldown_until.isoformat() if self.cooldown_until else None,
+            'weekly_cooldown_until': self.weekly_cooldown_until.isoformat() if self.weekly_cooldown_until else None
         }
     
     def _check_daily_reset(self, skip_reset: bool = False) -> bool:
@@ -172,9 +195,11 @@ class RiskManager:
         if today.weekday() == 0 and today > self.last_weekly_reset:
             logger.info(f"📅 New week - resetting weekly counters")
             self.weekly_loss = 0.0
+            self.weekly_pnl = 0.0
             self.last_weekly_reset = today
             self.trading_enabled = True
             self.cooldown_until = None
+            self.weekly_cooldown_until = None  # Clear weekly cooldown on new week
             self._save_state()
     
     def _is_weekend(self) -> bool:
@@ -189,9 +214,11 @@ class RiskManager:
                 'equity': self.equity,
                 'daily_loss': self.daily_loss,
                 'weekly_loss': self.weekly_loss,
+                'weekly_pnl': self.weekly_pnl,  # Save weekly PnL
                 'consecutive_losses': self.consecutive_losses,
                 'trading_enabled': self.trading_enabled,
                 'cooldown_until': self.cooldown_until.isoformat() if self.cooldown_until else None,
+                'weekly_cooldown_until': self.weekly_cooldown_until.isoformat() if self.weekly_cooldown_until else None,
                 'last_reset_date': self.last_reset_date.isoformat(),
                 'last_weekly_reset': self.last_weekly_reset.isoformat(),
                 'last_updated': datetime.now().isoformat()
@@ -215,12 +242,17 @@ class RiskManager:
                 self.equity = state.get('equity', Config.INITIAL_CAPITAL)
                 self.daily_loss = state.get('daily_loss', 0.0)
                 self.weekly_loss = state.get('weekly_loss', 0.0)
+                self.weekly_pnl = state.get('weekly_pnl', 0.0)  # Load weekly PnL
                 self.consecutive_losses = state.get('consecutive_losses', 0)
                 self.trading_enabled = state.get('trading_enabled', True)
                 
                 cooldown_str = state.get('cooldown_until')
                 if cooldown_str:
                     self.cooldown_until = datetime.fromisoformat(cooldown_str)
+                
+                weekly_cooldown_str = state.get('weekly_cooldown_until')
+                if weekly_cooldown_str:
+                    self.weekly_cooldown_until = datetime.fromisoformat(weekly_cooldown_str)
                 
                 reset_date_str = state.get('last_reset_date')
                 if reset_date_str:

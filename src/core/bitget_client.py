@@ -33,7 +33,8 @@ class BitGetClient:
         self, 
         symbol: str, 
         timeframe: str, 
-        limit: int = 500
+        limit: int = 500,
+        since: int = None
     ) -> pd.DataFrame:
         """
         Fetch OHLCV data for a symbol
@@ -42,6 +43,7 @@ class BitGetClient:
             symbol: Trading pair (e.g., 'BTCUSDT')
             timeframe: Candle timeframe (e.g., '15m')
             limit: Number of candles to fetch
+            since: Timestamp in milliseconds (for historical data)
         
         Returns:
             DataFrame with OHLCV data
@@ -54,7 +56,8 @@ class BitGetClient:
             ohlcv = self.exchange.fetch_ohlcv(
                 symbol=bitget_symbol,
                 timeframe=timeframe,
-                limit=limit
+                limit=limit,
+                since=since
             )
             
             # Convert to DataFrame
