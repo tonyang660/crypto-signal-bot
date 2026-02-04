@@ -158,6 +158,15 @@ class SignalTracker:
         stop_loss = signal['stop_loss']
         tps = signal['take_profits']
         
+        # Track best price achieved
+        if 'best_price' not in signal:
+            signal['best_price'] = entry_price
+        
+        if direction == 'long':
+            signal['best_price'] = max(signal['best_price'], current_price)
+        else:
+            signal['best_price'] = min(signal['best_price'], current_price)
+        
         hit_info = None
         
         # Check for hits based on direction
@@ -175,6 +184,10 @@ class SignalTracker:
             
             elif current_price >= tps['tp3']['price'] and not signal['tp3_hit'] and signal['tp2_hit']:
                 hit_info = self._handle_tp_hit(symbol, 'tp3')
+            
+            # Near-TP protection: Check if price got very close but is reversing
+            elif Config.NEAR_TP_ENABLED and not signal['stop_hit']:
+                hit_info = self._check_near_tp_reversal(signal, symbol)
         
         else:  # short
             # Check stop loss
@@ -190,11 +203,71 @@ class SignalTracker:
             
             elif current_price <= tps['tp3']['price'] and not signal['tp3_hit'] and signal['tp2_hit']:
                 hit_info = self._handle_tp_hit(symbol, 'tp3')
+            
+            # Near-TP protection: Check if price got very close but is reversing
+            elif Config.NEAR_TP_ENABLED and not signal['stop_hit']:
+                hit_info = self._check_near_tp_reversal(signal, symbol)
         
         # Save updated state
         self._save_active_signals()
         
         return hit_info
+    
+    def _check_near_tp_reversal(self, signal: Dict, symbol: str) -> Optional[Dict]:
+        """
+        Check if price got very close to next TP but is now reversing.
+        This prevents frustrating situations where price almost hits TP but reverses to SL.
+        
+        Logic:
+        - Determine which TP level is next
+        - Calculate if best_price achieved >= X% of distance to that TP
+        - If yes, and price has pulled back, trigger TP early to lock in profit
+        """
+        direction = signal['direction']
+        entry = signal['entry_price']
+        current = signal['current_price']
+        best = signal['best_price']
+        tps = signal['take_profits']
+        
+        # Determine next TP level
+        if not signal['tp1_hit']:
+            next_tp_level = 'tp1'
+        elif not signal['tp2_hit']:
+            next_tp_level = 'tp2'
+        elif not signal['tp3_hit']:
+            next_tp_level = 'tp3'
+        else:
+            return None  # All TPs already hit
+        
+        next_tp_price = tps[next_tp_level]['price']
+        
+        # Calculate progress toward TP
+        if direction == 'long':
+            distance_to_tp = next_tp_price - entry
+            best_progress = best - entry
+            progress_pct = best_progress / distance_to_tp if distance_to_tp > 0 else 0
+            
+            # Check if price achieved threshold and is now pulling back
+            if progress_pct >= Config.NEAR_TP_THRESHOLD:
+                pullback_pct = (best - current) / best if best > 0 else 0
+                # Trigger if pulled back more than 0.5% from best
+                if pullback_pct >= 0.005:
+                    logger.warning(f"{symbol}: Near-TP protection triggered! Best: ${best:.4f} ({progress_pct*100:.1f}% to {next_tp_level.upper()}), Current: ${current:.4f} - Taking profit early")
+                    return self._handle_tp_hit(symbol, next_tp_level, early_exit=True)
+        else:
+            distance_to_tp = entry - next_tp_price
+            best_progress = entry - best
+            progress_pct = best_progress / distance_to_tp if distance_to_tp > 0 else 0
+            
+            # Check if price achieved threshold and is now pulling back
+            if progress_pct >= Config.NEAR_TP_THRESHOLD:
+                pullback_pct = (current - best) / best if best > 0 else 0
+                # Trigger if pulled back more than 0.5% from best
+                if pullback_pct >= 0.005:
+                    logger.warning(f"{symbol}: Near-TP protection triggered! Best: ${best:.4f} ({progress_pct*100:.1f}% to {next_tp_level.upper()}), Current: ${current:.4f} - Taking profit early")
+                    return self._handle_tp_hit(symbol, next_tp_level, early_exit=True)
+        
+        return None
     
     def _calculate_trailing_stop(self, signal: Dict, tp_level: str) -> float:
         """
@@ -233,8 +306,14 @@ class SignalTracker:
         
         return signal['stop_loss']  # Default: keep current
     
-    def _handle_tp_hit(self, symbol: str, tp_level: str) -> Dict:
-        """Handle take profit hit"""
+    def _handle_tp_hit(self, symbol: str, tp_level: str, early_exit: bool = False) -> Dict:
+        """Handle take profit hit
+        
+        Args:
+            symbol: Trading pair symbol
+            tp_level: TP level hit (tp1, tp2, tp3)
+            early_exit: If True, this is a near-TP protection trigger (not exact TP hit)
+        """
         signal = self.active_signals[symbol]
         
         # Mark TP as hit

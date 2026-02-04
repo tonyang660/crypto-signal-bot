@@ -79,6 +79,10 @@ class Config:
     TP3_RATIO = 3.5
     TP3_CLOSE_PERCENT = 20  # Trail remaining 20%
     
+    # Near-TP Protection: Lock in profit if price gets very close to TP
+    NEAR_TP_THRESHOLD = 0.92  # Trigger at 92% of distance to TP (adjustable: 0.90-0.95)
+    NEAR_TP_ENABLED = True  # Set to False to disable this feature
+    
     # Volatility Filters
     VOLATILITY_MIN_RATIO = 0.7
     VOLATILITY_MAX_RATIO = 2.0
