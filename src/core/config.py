@@ -26,8 +26,21 @@ class Config:
     # ==================== TRADING PAIRS ====================
     TRADING_PAIRS: List[str] = os.getenv(
         'TRADING_PAIRS', 
-        'BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT'
+        'BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT,ADAUSDT,LINKUSDT,AVAXUSDT,AAVEUSDT,UNIUSDT,TRXUSDT,TONUSDT,APTUSDT'
     ).split(',')
+    
+    # ==================== CORRELATION GROUPS ====================
+    # Group pairs by correlation to prevent overexposure
+    CORRELATION_GROUPS = {
+        'btc_followers': ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'],  # High BTC correlation 0.85+
+        'mid_caps': ['ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'SOLUSDT'],  # Mid correlation 0.75-0.85
+        'defi': ['AAVEUSDT', 'UNIUSDT'],  # DeFi sector
+        'layer1': ['TRXUSDT', 'TONUSDT', 'APTUSDT'],  # L1 platforms
+        'independent': ['XRPUSDT']  # Lower BTC correlation <0.75
+    }
+    
+    # Maximum concurrent signals per correlation group
+    MAX_CORRELATED_SIGNALS = 2  # Prevent too many correlated positions
     
     # BitGet specific symbol format
     @classmethod
@@ -57,7 +70,7 @@ class Config:
     # ==================== STRATEGY PARAMETERS ====================
     # Indicators
     ATR_PERIOD = 14
-    ATR_STOP_MULTIPLIER = 2.0  # Increased from 1.5 to give trades more breathing room
+    ATR_STOP_MULTIPLIER = 2.5  # Crypto-appropriate (was 2.0 - too tight for volatility)
     EMA_FAST = 21
     EMA_MEDIUM = 50
     EMA_SLOW = 200
@@ -83,6 +96,14 @@ class Config:
     NEAR_TP_THRESHOLD = 0.92  # Trigger at 92% of distance to TP (adjustable: 0.90-0.95)
     NEAR_TP_ENABLED = True  # Set to False to disable this feature
     
+    # Adaptive Stop Protection: Protect profits when market conditions worsen
+    ADAPTIVE_STOP_ENABLED = True  # Tighten stops on regime/volatility changes
+    ADAPTIVE_STOP_MIN_PROFIT_R = 0.4  # Only activate if position is up 0.4R or more
+    ADAPTIVE_STOP_VOLATILITY_SPIKE = 1.6  # Tighten if ATR increases by 60%
+    ADAPTIVE_STOP_REGIME_CHANGE = True  # Tighten if regime changes to choppy
+    ADAPTIVE_STOP_BREAKEVEN_BUFFER = 0.0015  # 0.15% buffer above breakeven (prevents stop hunt)
+    ADAPTIVE_STOP_PARTIAL_PROTECTION = True  # Exit 50% at breakeven, let 50% run to original stop
+    
     # Volatility Filters
     VOLATILITY_MIN_RATIO = 0.7
     VOLATILITY_MAX_RATIO = 2.0
@@ -91,7 +112,7 @@ class Config:
     # ==================== SIGNAL MANAGEMENT ====================
     MAX_ACTIVE_SIGNALS_PER_PAIR = 1
     MAX_ACTIVE_BTC_SIGNALS = 1  # Only 1 BTC signal at a time
-    MAX_TOTAL_ACTIVE_SIGNALS = 3
+    MAX_TOTAL_ACTIVE_SIGNALS = 4  # Increased from 3 to accommodate more pairs (but correlation limits prevent overexposure)
     
     # ==================== SCANNING ====================
     SCAN_INTERVAL_SECONDS = int(os.getenv('SCAN_INTERVAL_SECONDS', 300))  # 5 minutes

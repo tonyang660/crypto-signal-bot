@@ -143,6 +143,46 @@ class SignalBot:
     def _scan_symbol(self, symbol: str):
         """Scan individual symbol for entry opportunities"""
         try:
+            # === PHASE 1: BTC REGIME CHECK (Market-wide filter) ===
+            # Check BTC conditions BEFORE individual symbol analysis
+            # Only affects NEW signal creation, never touches existing positions
+            if symbol != 'BTCUSDT':  # Skip for BTC itself to avoid circular dependency
+                try:
+                    btc_data = self.data_manager.get_multi_timeframe_data('BTCUSDT')
+                    if not any(df.empty for df in btc_data.values()):
+                        btc_data['htf'] = Indicators.add_all_indicators(btc_data['htf'])
+                        btc_regime_info = RegimeDetector.check_btc_regime(btc_data['htf'])
+                        
+                        logger.info(f"🔍 BTC Regime: {btc_regime_info['regime']} - {btc_regime_info['reason']}")
+                        
+                        # Apply BTC regime adjustments to this scan
+                        btc_threshold_adj = btc_regime_info['score_threshold_adj']
+                        btc_position_mult = btc_regime_info['position_size_mult']
+                        btc_max_signals_adj = btc_regime_info['max_signals_adj']
+                    else:
+                        logger.warning("Could not fetch BTC data for regime check")
+                        btc_threshold_adj = 5  # Default: slightly conservative
+                        btc_position_mult = 0.9
+                        btc_max_signals_adj = 0
+                except Exception as e:
+                    logger.warning(f"BTC regime check failed: {e}, proceeding with defaults")
+                    btc_threshold_adj = 5
+                    btc_position_mult = 0.9
+                    btc_max_signals_adj = 0
+            else:
+                # For BTC itself, no adjustment
+                btc_threshold_adj = 0
+                btc_position_mult = 1.0
+                btc_max_signals_adj = 0
+            
+            # Check if we should create new signals based on BTC regime
+            current_signals = len(self.signal_tracker.get_all_active_signals())
+            adjusted_max_signals = max(1, Config.MAX_TOTAL_ACTIVE_SIGNALS + btc_max_signals_adj)
+            
+            if current_signals >= adjusted_max_signals:
+                logger.info(f"{symbol}: Max signals reached ({current_signals}/{adjusted_max_signals}) due to BTC regime")
+                return
+            
             # Fetch multi-timeframe data
             data = self.data_manager.get_multi_timeframe_data(symbol)
             
@@ -155,15 +195,18 @@ class SignalBot:
             for timeframe in data:
                 data[timeframe] = Indicators.add_all_indicators(data[timeframe])
             
-            # Check market regime
+            # Check market regime (individual symbol)
             regime = RegimeDetector.detect_regime(data['primary'])
             
-            # Get score threshold based on regime
+            # Get base score threshold
             account_state = self.risk_manager.get_account_state()
-            threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
+            base_threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
+            
+            # Apply BTC regime adjustment to threshold
+            threshold = base_threshold + btc_threshold_adj
             
             if not RegimeDetector.should_trade_regime(regime):
-                logger.info(f"{symbol}: ❌ Unfavorable regime ({regime}) | Min threshold: {threshold}")
+                logger.info(f"{symbol}: ❌ Unfavorable regime ({regime}) | Threshold: {threshold} (base: {base_threshold} + BTC adj: {btc_threshold_adj})")
                 return
             
             # Check for extreme volatility (likely news event)
@@ -197,7 +240,7 @@ class SignalBot:
                     logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
                     reason = long_check['reason']
                 
-                self._create_signal_with_score(symbol, 'long', data, reason, score, breakdown)
+                self._create_signal_with_score(symbol, 'long', data, reason, score, breakdown, btc_position_mult)
                 return
             else:
                 logger.info(f"{symbol}: ❌ Long entry failed | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
@@ -217,7 +260,7 @@ class SignalBot:
                     logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
                     reason = short_check['reason']
                 
-                self._create_signal_with_score(symbol, 'short', data, reason, score, breakdown)
+                self._create_signal_with_score(symbol, 'short', data, reason, score, breakdown, btc_position_mult)
                 return
             else:
                 logger.info(f"{symbol}: ❌ Short entry failed | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
@@ -234,9 +277,10 @@ class SignalBot:
         data: Dict,
         entry_reason: str,
         score: int,
-        breakdown: dict
+        breakdown: dict,
+        btc_position_mult: float = 1.0
     ):
-        """Create new trading signal with pre-calculated score"""
+        """Create new trading signal with pre-calculated score and BTC regime adjustment"""
         try:
             # Get current price
             current_price = data['entry']['close'].iloc[-1]
@@ -260,6 +304,9 @@ class SignalBot:
                 data, direction, current_price
             )
             
+            # Get ATR for adaptive stop monitoring
+            entry_atr = data['primary']['atr'].iloc[-1]
+            
             # Calculate take profits (regime-adjusted)
             take_profits = StopTPCalculator.calculate_take_profits(
                 current_price, stop_loss, direction, regime
@@ -281,6 +328,13 @@ class SignalBot:
                 logger.error(f"{symbol}: Could not calculate position size")
                 return
             
+            # Apply BTC regime position size adjustment
+            if btc_position_mult < 1.0:
+                original_contracts = position_size['contracts']
+                position_size['contracts'] = max(1, int(position_size['contracts'] * btc_position_mult))
+                position_size['total_value'] = position_size['contracts'] * current_price
+                logger.info(f"{symbol}: BTC regime adjusted position: {original_contracts} → {position_size['contracts']} contracts ({btc_position_mult:.1%} multiplier)")
+            
             # Validate position size
             market_info = self.data_manager.client.get_market_info(symbol)
             if not PositionSizer.validate_position_size(position_size, market_info):
@@ -297,7 +351,8 @@ class SignalBot:
                 position_size=position_size,
                 score=score,
                 entry_reason=entry_reason,
-                regime=regime  # Add regime for tracking
+                regime=regime,  # Add regime for tracking
+                atr=entry_atr  # Add entry ATR for adaptive stops
             )
             
             if signal_id:
@@ -327,6 +382,58 @@ class SignalBot:
             if current_price == 0:
                 logger.warning(f"Could not get price for {symbol}")
                 return
+            
+            # Get current market data for adaptive stop check
+            data = self.data_manager.get_multi_timeframe_data(symbol)
+            if not any(df.empty for df in data.values()):
+                # Add indicators
+                for timeframe in data:
+                    data[timeframe] = Indicators.add_all_indicators(data[timeframe])
+                
+                # Check for adaptive stop trigger
+                current_atr = data['primary']['atr'].iloc[-1]
+                current_regime = RegimeDetector.detect_regime(data['primary'])
+                
+                should_trigger, new_stop, reason = self.signal_tracker.check_adaptive_stop_trigger(
+                    symbol, current_price, current_atr, current_regime
+                )
+                
+                if should_trigger and new_stop is not None:
+                    # Adaptive stop triggered - update stop loss
+                    signal = self.signal_tracker.active_signals.get(symbol)
+                    if signal:
+                        old_stop = signal['stop_loss']
+                        signal['stop_loss'] = new_stop
+                        signal['adaptive_stop_triggered'] = True
+                        
+                        # Enable partial protection mode if configured
+                        protection_mode = "partial" if Config.ADAPTIVE_STOP_PARTIAL_PROTECTION else "full"
+                        if Config.ADAPTIVE_STOP_PARTIAL_PROTECTION:
+                            signal['partial_protection_active'] = True
+                        
+                        self.signal_tracker._save_active_signals()
+                        
+                        logger.info(f"🛡️ Adaptive stop triggered for {symbol}: {reason} (mode: {protection_mode})")
+                        
+                        # Send Discord notification
+                        protection_desc = (
+                            "50% of position protected at breakeven.\n"
+                            "Remaining 50% continues with original stop."
+                            if Config.ADAPTIVE_STOP_PARTIAL_PROTECTION else
+                            "Full position protected at breakeven."
+                        )
+                        
+                        self.discord.send_info(
+                            f"🛡️ **Adaptive Stop Protection - {symbol}**\n\n"
+                            f"Market conditions worsened while in profit.\n"
+                            f"{protection_desc}\n\n"
+                            f"**Details:**\n"
+                            f"Direction: {signal['direction'].upper()}\n"
+                            f"Reason: {reason}\n"
+                            f"Old Stop: ${old_stop:.4f}\n"
+                            f"New Stop: ${new_stop:.4f}\n"
+                            f"Protection: Breakeven + buffer"
+                        )
             
             # Update signal
             hit_info = self.signal_tracker.update_signal_price(symbol, current_price)
@@ -397,6 +504,24 @@ class SignalBot:
                         duration_hours=duration
                     )
                     self.risk_manager.record_trade(hit_info['total_pnl'])
+                
+                elif hit_info['type'] == 'partial_protection_exit':
+                    # Partial protection triggered - 50% exited at breakeven
+                    self.discord.send_info(
+                        f"⚡ **Partial Protection Exit - {symbol}**\n\n"
+                        f"50% of position exited at breakeven.\n"
+                        f"Remaining 50% continues with original stop.\n\n"
+                        f"**Details:**\n"
+                        f"Direction: {signal['direction'].upper()}\n"
+                        f"Exit Price: ${hit_info['price']:.4f}\n"
+                        f"Partial PnL: ${hit_info['partial_pnl']:+.2f}\n"
+                        f"Remaining: {hit_info['percent_remaining']:.0f}%\n"
+                        f"New Stop: ${hit_info['new_stop']:.4f} (original)\n\n"
+                        f"✅ Protected from full loss while keeping upside potential."
+                    )
+                    
+                    # Record the partial exit PnL
+                    self.risk_manager.record_trade(hit_info['partial_pnl'])
             
         except Exception as e:
             logger.error(f"Error updating signal for {symbol}: {e}")

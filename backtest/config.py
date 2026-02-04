@@ -29,7 +29,7 @@ class BacktestConfig:
     
     # ==================== TRADING PAIRS ====================
     # Test on same pairs as live trading
-    SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'XLMUSDT', 'ADAUSDT', 'DOGEUSDT', 'SUIUSDT', 'HBARUSDT', 'HYPEUSDT', 'XMRUSDT', 'LINKUSDT', 'AVAXUSDT', 'PEPEUSDT']
+    SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'AAVEUSDT', 'UNIUSDT', 'TRXUSDT', 'TONUSDT', 'APTUSDT']
 
     # ==================== TIMEFRAMES ====================
     # Must match live bot

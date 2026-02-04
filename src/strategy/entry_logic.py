@@ -76,26 +76,12 @@ class EntryLogic:
             if swing_low and abs(current_price - swing_low) < (0.5 * atr):
                 return {'valid': False, 'reason': f'Too close to swing low support (${swing_low:.2f})'}
             
-            # Must be bullish candle
-            last_close = entry_df['close'].iloc[-1]
-            last_open = entry_df['open'].iloc[-1]
-            
-            if last_close <= last_open:
-                return {'valid': False, 'reason': 'Not a bullish candle'}
-            
-            # MACD turning up on 5M
+            # 5M MACD turning up
             macd_5m_hist = entry_df['macd_hist'].iloc[-1]
             macd_5m_hist_prev = entry_df['macd_hist'].iloc[-2]
             
             if macd_5m_hist <= macd_5m_hist_prev:
                 return {'valid': False, 'reason': '5M MACD not turning up'}
-            
-            # 6. Volume Confirmation
-            volume = entry_df['volume'].iloc[-1]
-            volume_sma = entry_df['volume_sma'].iloc[-1]
-            
-            if volume <= volume_sma:
-                return {'valid': False, 'reason': 'Insufficient volume'}
             
             # All conditions met
             return {'valid': True, 'reason': 'All long entry conditions met'}
@@ -169,26 +155,12 @@ class EntryLogic:
             if swing_high and abs(current_price - swing_high) < (0.5 * atr):
                 return {'valid': False, 'reason': f'Too close to swing high resistance (${swing_high:.2f})'}
             
-            # Bearish candle
-            last_close = entry_df['close'].iloc[-1]
-            last_open = entry_df['open'].iloc[-1]
-            
-            if last_close >= last_open:
-                return {'valid': False, 'reason': 'Not a bearish candle'}
-            
             # MACD turning down
             macd_5m_hist = entry_df['macd_hist'].iloc[-1]
             macd_5m_hist_prev = entry_df['macd_hist'].iloc[-2]
             
             if macd_5m_hist >= macd_5m_hist_prev:
                 return {'valid': False, 'reason': '5M MACD not turning down'}
-            
-            # 6. Volume
-            volume = entry_df['volume'].iloc[-1]
-            volume_sma = entry_df['volume_sma'].iloc[-1]
-            
-            if volume <= volume_sma:
-                return {'valid': False, 'reason': 'Insufficient volume'}
             
             return {'valid': True, 'reason': 'All short entry conditions met'}
             

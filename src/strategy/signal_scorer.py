@@ -15,13 +15,13 @@ class SignalScorer:
         Calculate signal quality score
         
         Breakdown:
-        - HTF Alignment: 20 points
-        - Momentum Quality (MACD): 20 points
-        - RSI Quality: 15 points
-        - Entry Location: 15 points
-        - Break of Structure: 10 points
-        - Volatility Suitability: 10 points
-        - Volume Confirmation: 10 points
+        - HTF Alignment: 25 points (most critical - never fight trend)
+        - Momentum Quality (MACD): 20 points (acceleration matters)
+        - Entry Location: 20 points (timing = R:R foundation)
+        - BOS (Break of Structure): 13 points (institutional footprints)
+        - RSI Quality: 12 points (confirmation, not predictor)
+        - Volatility Suitability: 10 points (risk management)
+        - Volume Confirmation: 8 points (least reliable in crypto)
         
         Returns:
             Score from 0-100
@@ -52,10 +52,10 @@ class SignalScorer:
                         else:
                             score += 12
                     else:
-                        score += 15
+                        score += 12
                         
                 elif htf_trend == 'neutral':
-                    score += 10
+                    score += 8
             
             elif direction == 'short':
                 if htf_trend == 'bearish':
@@ -73,6 +73,8 @@ class SignalScorer:
                             score += 12
                     else:
                         score += 12
+                elif htf_trend == 'neutral':
+                    score += 8
             
             # === 2. Momentum Quality (0-20 points) ===
             macd_hist = primary_df['macd_hist'].tail(3).values
@@ -98,27 +100,27 @@ class SignalScorer:
                     elif macd_hist[-1] < 0:
                         score += 8
             
-            # === 3. RSI Quality (0-15 points) ===
+            # === 3. RSI Quality (0-12 points) ===
             rsi = primary_df['rsi'].iloc[-1]
             
             if direction == 'long':
                 # Long entries: RSI should be oversold to neutral (not overbought)
                 if 30 <= rsi <= 50:  # Sweet spot: reset but not overbought
-                    score += 15
+                    score += 12
                 elif 50 < rsi <= 60:  # Acceptable
-                    score += 10
+                    score += 8
                 elif 25 <= rsi < 30 or 60 < rsi <= 65:  # Marginal
-                    score += 5
+                    score += 4
                 # RSI > 70 or < 25 = 0 points (too extreme)
             
             elif direction == 'short':
                 # Short entries: RSI should be overbought to neutral (not oversold)
                 if 50 <= rsi <= 70:  # Sweet spot: extended but not oversold
-                    score += 15
+                    score += 12
                 elif 40 <= rsi < 50:  # Acceptable
-                    score += 10
+                    score += 8
                 elif 35 <= rsi < 40 or 70 < rsi <= 75:  # Marginal
-                    score += 5
+                    score += 4
                 # RSI < 30 or > 75 = 0 points (too extreme)
             
             # === 4. Entry Location Quality (0-20 points) ===
@@ -132,11 +134,11 @@ class SignalScorer:
                 if distance_from_ema < 0.3:  # Very close to EMA
                     score += 20
                 elif distance_from_ema < 0.6:
-                    score += 15
+                    score += 14
                 elif distance_from_ema < 1.0:
-                    score += 10
+                    score += 8
                 else:
-                    score += 5
+                    score += 3
             
             # === 5. Break of Structure (0-10 points) ===
             # Check primary timeframe for BOS confirmation
@@ -146,7 +148,7 @@ class SignalScorer:
             bos_points, _ = MarketStructure.get_bos_quality_score(bos_detected, bars_ago)
             score += bos_points
             
-            # === 6. Volume Confirmation (0-10 points) ===
+            # === 6. Volume Confirmation (0-8 points) ===
             volume = entry_df['volume'].iloc[-1]
             volume_sma = entry_df['volume_sma'].iloc[-1]
             
@@ -154,11 +156,13 @@ class SignalScorer:
                 volume_ratio = volume / volume_sma
                 
                 if volume_ratio > 1.5:  # Significantly above average
-                    score += 10
+                    score += 8
                 elif volume_ratio > 1.2:
-                    score += 7
-                elif volume_ratio > 1.0:
                     score += 5
+                elif volume_ratio > 1.0:
+                    score += 3
+                elif volume_ratio > 0.8:
+                    score += 1
             
             return min(score, 100)  # Cap at 100
             
@@ -196,13 +200,13 @@ class SignalScorer:
         """
         try:
             breakdown = {
-                'htf_alignment': {'points': 0, 'max': 20, 'details': ''},
+                'htf_alignment': {'points': 0, 'max': 25, 'details': ''},
                 'momentum': {'points': 0, 'max': 20, 'details': ''},
-                'rsi_quality': {'points': 0, 'max': 15, 'details': ''},
-                'entry_location': {'points': 0, 'max': 15, 'details': ''},
-                'break_of_structure': {'points': 0, 'max': 10, 'details': ''},
+                'entry_location': {'points': 0, 'max': 20, 'details': ''},
+                'break_of_structure': {'points': 0, 'max': 13, 'details': ''},
+                'rsi_quality': {'points': 0, 'max': 12, 'details': ''},
                 'volatility': {'points': 0, 'max': 10, 'details': ''},
-                'volume': {'points': 0, 'max': 10, 'details': ''}
+                'volume': {'points': 0, 'max': 8, 'details': ''}
             }
             
             score = 0
@@ -210,7 +214,7 @@ class SignalScorer:
             primary_df = data['primary']
             entry_df = data['entry']
             
-            # === 1. HTF Trend Alignment (0-20 points) ===
+            # === 1. HTF Trend Alignment (0-25 points) ===
             htf_trend = MarketStructure.get_trend_direction(htf_df)
             
             if direction == 'long':
@@ -222,25 +226,25 @@ class SignalScorer:
                         distance = (price - ema_200) / ema_200
                         
                         if distance > 0.05:
-                            breakdown['htf_alignment']['points'] = 20
+                            breakdown['htf_alignment']['points'] = 25
                             breakdown['htf_alignment']['details'] = f'Strongly bullish, {distance*100:.1f}% above EMA200'
-                            score += 20
+                            score += 25
                         elif distance > 0.02:
-                            breakdown['htf_alignment']['points'] = 15
+                            breakdown['htf_alignment']['points'] = 18
                             breakdown['htf_alignment']['details'] = f'Bullish, {distance*100:.1f}% above EMA200'
-                            score += 15
+                            score += 18
                         else:
-                            breakdown['htf_alignment']['points'] = 10
+                            breakdown['htf_alignment']['points'] = 12
                             breakdown['htf_alignment']['details'] = f'Weakly bullish, {distance*100:.1f}% above EMA200'
-                            score += 10
+                            score += 12
                     else:
-                        breakdown['htf_alignment']['points'] = 10
+                        breakdown['htf_alignment']['points'] = 12
                         breakdown['htf_alignment']['details'] = 'Bullish trend'
-                        score += 10
+                        score += 12
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 7
+                    breakdown['htf_alignment']['points'] = 8
                     breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 7
+                    score += 8
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             
@@ -253,25 +257,25 @@ class SignalScorer:
                         distance = (ema_200 - price) / ema_200
                         
                         if distance > 0.05:
-                            breakdown['htf_alignment']['points'] = 20
+                            breakdown['htf_alignment']['points'] = 25
                             breakdown['htf_alignment']['details'] = f'Strongly bearish, {distance*100:.1f}% below EMA200'
-                            score += 20
+                            score += 25
                         elif distance > 0.02:
-                            breakdown['htf_alignment']['points'] = 15
+                            breakdown['htf_alignment']['points'] = 18
                             breakdown['htf_alignment']['details'] = f'Bearish, {distance*100:.1f}% below EMA200'
-                            score += 15
+                            score += 18
                         else:
-                            breakdown['htf_alignment']['points'] = 10
+                            breakdown['htf_alignment']['points'] = 12
                             breakdown['htf_alignment']['details'] = f'Weakly bearish, {distance*100:.1f}% below EMA200'
-                            score += 10
+                            score += 12
                     else:
-                        breakdown['htf_alignment']['points'] = 10
+                        breakdown['htf_alignment']['points'] = 12
                         breakdown['htf_alignment']['details'] = 'Bearish trend'
-                        score += 10
+                        score += 12
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 7
+                    breakdown['htf_alignment']['points'] = 8
                     breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 7
+                    score += 8
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             
@@ -308,38 +312,38 @@ class SignalScorer:
                 else:
                     breakdown['momentum']['details'] = f'Negative momentum (MACD: {macd_hist[-1]:.4f})'
             
-            # === 3. RSI Quality (0-15 points) ===
+            # === 3. RSI Quality (0-12 points) ===
             rsi = primary_df['rsi'].iloc[-1]
             
             if direction == 'long':
                 if 30 <= rsi <= 50:
-                    breakdown['rsi_quality']['points'] = 15
+                    breakdown['rsi_quality']['points'] = 12
                     breakdown['rsi_quality']['details'] = f'Optimal RSI for long ({rsi:.1f})'
-                    score += 15
+                    score += 12
                 elif 50 < rsi <= 60:
-                    breakdown['rsi_quality']['points'] = 10
+                    breakdown['rsi_quality']['points'] = 8
                     breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
-                    score += 10
+                    score += 8
                 elif 25 <= rsi < 30 or 60 < rsi <= 65:
-                    breakdown['rsi_quality']['points'] = 5
+                    breakdown['rsi_quality']['points'] = 4
                     breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
-                    score += 5
+                    score += 4
                 else:
                     breakdown['rsi_quality']['details'] = f'Poor RSI for long ({rsi:.1f})'
             
             elif direction == 'short':
                 if 50 <= rsi <= 70:
-                    breakdown['rsi_quality']['points'] = 15
+                    breakdown['rsi_quality']['points'] = 12
                     breakdown['rsi_quality']['details'] = f'Optimal RSI for short ({rsi:.1f})'
-                    score += 15
+                    score += 12
                 elif 40 <= rsi < 50:
-                    breakdown['rsi_quality']['points'] = 10
+                    breakdown['rsi_quality']['points'] = 8
                     breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
-                    score += 10
+                    score += 8
                 elif 35 <= rsi < 40 or 70 < rsi <= 75:
-                    breakdown['rsi_quality']['points'] = 5
+                    breakdown['rsi_quality']['points'] = 4
                     breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
-                    score += 5
+                    score += 4
                 else:
                     breakdown['rsi_quality']['details'] = f'Poor RSI for short ({rsi:.1f})'
             
@@ -352,28 +356,28 @@ class SignalScorer:
                 distance_from_ema = abs(price - ema_21) / atr
                 
                 if distance_from_ema < 0.3:
-                    breakdown['entry_location']['points'] = 15
+                    breakdown['entry_location']['points'] = 20
                     breakdown['entry_location']['details'] = f'Excellent entry location ({distance_from_ema:.2f} ATR from EMA)'
-                    score += 15
+                    score += 20
                 elif distance_from_ema < 0.6:
-                    breakdown['entry_location']['points'] = 12
+                    breakdown['entry_location']['points'] = 14
                     breakdown['entry_location']['details'] = f'Good entry location ({distance_from_ema:.2f} ATR from EMA)'
-                    score += 12
+                    score += 14
                 elif distance_from_ema < 1.0:
                     breakdown['entry_location']['points'] = 8
                     breakdown['entry_location']['details'] = f'Fair entry location ({distance_from_ema:.2f} ATR from EMA)'
                     score += 8
                 else:
-                    breakdown['entry_location']['points'] = 4
-                    breakdown['entry_location']['details'] = f'Poor entry location ({distance_from_ema:.2f} ATR from EMA)'
-                    score += 4
+                    breakdown['entry_location']['points'] = 3
+                    breakdown['entry_location']['details'] = f'Poor entry location ({distance_from_ema:.2f} ATR from EMA, chasing)'
+                    score += 3
             
-            # === 5. Break of Structure (0-10 points) ===
+            # === 5. Break of Structure (0-13 points) ===
             # Check for BOS on primary timeframe (15M)
             bos_detected, bars_ago, structure_level = MarketStructure.detect_break_of_structure(
                 primary_df, direction, lookback=20, confirmation_bars=20
             )
-            bos_points, bos_desc = MarketStructure.get_bos_quality_score(bos_detected, bars_ago, max_points=10)
+            bos_points, bos_desc = MarketStructure.get_bos_quality_score(bos_detected, bars_ago, max_points=13)
             
             breakdown['break_of_structure']['points'] = bos_points
             if bos_detected:
@@ -382,7 +386,31 @@ class SignalScorer:
                 breakdown['break_of_structure']['details'] = 'No structure break detected'
             score += bos_points
             
-            # === 6. Volume Confirmation (0-10 points) ===
+            # === 6. Volatility Suitability (0-10 points) ===
+            current_atr = primary_df['atr'].iloc[-1]
+            avg_atr = primary_df['atr_sma'].iloc[-1]
+            
+            if avg_atr > 0:
+                atr_ratio = current_atr / avg_atr
+                
+                if 1.0 <= atr_ratio <= 1.4:  # Ideal volatility
+                    breakdown['volatility']['points'] = 10
+                    breakdown['volatility']['details'] = f'Ideal volatility ({atr_ratio:.2f}x avg)'
+                    score += 10
+                elif 0.8 <= atr_ratio < 1.0 or 1.4 < atr_ratio <= 1.8:  # Acceptable
+                    breakdown['volatility']['points'] = 6
+                    breakdown['volatility']['details'] = f'Acceptable volatility ({atr_ratio:.2f}x avg)'
+                    score += 6
+                elif 0.7 <= atr_ratio < 0.8 or 1.8 < atr_ratio <= 2.0:  # Marginal
+                    breakdown['volatility']['points'] = 3
+                    breakdown['volatility']['details'] = f'Marginal volatility ({atr_ratio:.2f}x avg)'
+                    score += 3
+                else:
+                    breakdown['volatility']['details'] = f'Extreme volatility ({atr_ratio:.2f}x avg)'
+            else:
+                breakdown['volatility']['details'] = 'Invalid ATR data'
+            
+            # === 7. Volume Confirmation (0-8 points) ===
             volume = entry_df['volume'].iloc[-1]
             volume_sma = entry_df['volume_sma'].iloc[-1]
             
@@ -390,19 +418,25 @@ class SignalScorer:
                 volume_ratio = volume / volume_sma
                 
                 if volume_ratio > 1.5:
-                    breakdown['volume']['points'] = 10
+                    breakdown['volume']['points'] = 8
                     breakdown['volume']['details'] = f'Strong volume ({volume_ratio:.2f}x average)'
-                    score += 10
+                    score += 8
                 elif volume_ratio > 1.2:
-                    breakdown['volume']['points'] = 7
-                    breakdown['volume']['details'] = f'Good volume ({volume_ratio:.2f}x average)'
-                    score += 7
-                elif volume_ratio > 1.0:
                     breakdown['volume']['points'] = 5
-                    breakdown['volume']['details'] = f'Above average volume ({volume_ratio:.2f}x)'
+                    breakdown['volume']['details'] = f'Good volume ({volume_ratio:.2f}x average)'
                     score += 5
+                elif volume_ratio > 1.0:
+                    breakdown['volume']['points'] = 3
+                    breakdown['volume']['details'] = f'Above average volume ({volume_ratio:.2f}x)'
+                    score += 3
+                elif volume_ratio > 0.8:
+                    breakdown['volume']['points'] = 1
+                    breakdown['volume']['details'] = f'Near average volume ({volume_ratio:.2f}x)'
+                    score += 1
+                else:
+                    breakdown['volume']['details'] = f'Low volume ({volume_ratio:.2f}x average)'
             else:
-                breakdown['volume']['details'] = f'Low volume ({volume_ratio:.2f}x average)'
+                breakdown['volume']['details'] = 'Invalid volume data'
             
             final_score = min(score, 100)
             

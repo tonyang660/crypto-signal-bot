@@ -77,6 +77,23 @@ class SignalTracker:
         if len(self.active_signals) >= Config.MAX_TOTAL_ACTIVE_SIGNALS:
             return False, f"Max active signals ({Config.MAX_TOTAL_ACTIVE_SIGNALS}) reached"
         
+        # Check correlation group limits (Phase 3)
+        symbol_group = None
+        for group_name, pairs in Config.CORRELATION_GROUPS.items():
+            if symbol in pairs:
+                symbol_group = group_name
+                break
+        
+        if symbol_group:
+            # Count how many active signals are in this correlation group
+            group_signals = 0
+            for active_symbol in self.active_signals.keys():
+                if active_symbol in Config.CORRELATION_GROUPS[symbol_group]:
+                    group_signals += 1
+            
+            if group_signals >= Config.MAX_CORRELATED_SIGNALS:
+                return False, f"Max correlated signals ({Config.MAX_CORRELATED_SIGNALS}) reached for group '{symbol_group}'"
+        
         return True, "Can create signal"
     
     def create_signal(
@@ -89,7 +106,8 @@ class SignalTracker:
         position_size: Dict,
         score: int,
         entry_reason: str,
-        regime: str = 'unknown'
+        regime: str = 'unknown',
+        atr: float = 0.0
     ) -> str:
         """
         Create new signal
@@ -110,6 +128,7 @@ class SignalTracker:
                 'direction': direction,
                 'entry_price': entry_price,
                 'stop_loss': stop_loss,
+                'original_stop_loss': stop_loss,  # Store original for R calculation
                 'take_profits': take_profits,
                 'position_size': position_size,
                 'score': score,
@@ -123,7 +142,12 @@ class SignalTracker:
                 'stop_hit': False,
                 'remaining_percent': 100,
                 'realized_pnl': 0.0,
-                'current_price': entry_price
+                'current_price': entry_price,
+                'best_price': entry_price,  # Track best price achieved
+                'entry_atr': atr,  # Store entry ATR for adaptive stop comparison
+                'entry_regime': regime,  # Store entry regime for change detection
+                'adaptive_stop_triggered': False,  # Track if adaptive protection activated
+                'partial_protection_active': False  # Track if 50% protected at breakeven, 50% running
             }
             
             # Add to active signals
@@ -371,6 +395,56 @@ class SignalTracker:
         """Handle stop loss hit"""
         signal = self.active_signals[symbol]
         
+        # Check if partial protection is active (50% at breakeven, 50% at original stop)
+        if signal.get('partial_protection_active', False):
+            logger.info(f"⚡ Partial protection stop hit for {symbol} - exiting 50% at breakeven")
+            
+            # Exit 50% of remaining position at breakeven
+            entry_price = signal['entry_price']
+            buffer = entry_price * Config.ADAPTIVE_STOP_BREAKEVEN_BUFFER
+            direction = signal['direction']
+            
+            if direction == 'long':
+                exit_price = entry_price + buffer
+            else:
+                exit_price = entry_price - buffer
+            
+            contracts = signal['position_size']['contracts']
+            remaining_contracts = contracts * (signal['remaining_percent'] / 100)
+            partial_contracts = remaining_contracts * 0.5  # Exit 50%
+            
+            # Calculate PnL for this partial exit (should be near breakeven)
+            if direction == 'long':
+                partial_pnl = (exit_price - entry_price) * partial_contracts
+            else:
+                partial_pnl = (entry_price - exit_price) * partial_contracts
+            
+            # Update signal state
+            signal['realized_pnl'] += partial_pnl
+            signal['remaining_percent'] *= 0.5  # 50% remains
+            signal['stop_loss'] = signal['original_stop_loss']  # Restore original stop for remaining 50%
+            signal['partial_protection_active'] = False  # Deactivate partial protection
+            
+            self._save_active_signals()
+            
+            hit_info = {
+                'type': 'partial_protection_exit',
+                'price': exit_price,
+                'partial_pnl': partial_pnl,
+                'percent_exited': 50,
+                'percent_remaining': signal['remaining_percent'],
+                'new_stop': signal['stop_loss'],
+                'signal': signal.copy()
+            }
+            
+            logger.success(
+                f"✅ {symbol} Partial protection: 50% exited at ${exit_price:.4f} "
+                f"(PnL: ${partial_pnl:.2f}), 50% continues with stop at ${signal['stop_loss']:.4f}"
+            )
+            
+            return hit_info
+        
+        # Normal full stop loss hit
         signal['stop_hit'] = True
         
         # Calculate loss
@@ -499,6 +573,94 @@ class SignalTracker:
             self._close_signal(symbol, reason)
             return True
         return False
+    
+    def check_adaptive_stop_trigger(
+        self,
+        symbol: str,
+        current_price: float,
+        current_atr: float,
+        current_regime: str
+    ) -> Tuple[bool, Optional[float], str]:
+        """
+        Check if adaptive stop protection should be triggered
+        
+        Triggers when position is profitable AND market conditions worsen:
+        - Volatility spike detected (ATR increased significantly)
+        - Regime changed to choppy/ranging
+        
+        Returns:
+            (should_trigger, new_stop_level, reason)
+        """
+        if not Config.ADAPTIVE_STOP_ENABLED:
+            return (False, None, "")
+        
+        if symbol not in self.active_signals:
+            return (False, None, "")
+        
+        signal = self.active_signals[symbol]
+        
+        # Only trigger once
+        if signal.get('adaptive_stop_triggered', False):
+            return (False, None, "already triggered")
+        
+        # Calculate profit in R multiples
+        entry = signal['entry_price']
+        original_stop = signal['original_stop_loss']
+        direction = signal['direction']
+        
+        if direction == 'LONG':
+            stop_distance = entry - original_stop
+            profit_distance = current_price - entry
+        else:  # SHORT
+            stop_distance = original_stop - entry
+            profit_distance = entry - current_price
+        
+        # Avoid division by zero
+        if stop_distance <= 0:
+            return (False, None, "invalid stop distance")
+        
+        profit_r = profit_distance / stop_distance
+        
+        # Must be profitable enough
+        if profit_r < Config.ADAPTIVE_STOP_MIN_PROFIT_R:
+            return (False, None, f"profit {profit_r:.2f}R below threshold")
+        
+        # Check for trigger conditions
+        entry_atr = signal.get('entry_atr', 0.0)
+        entry_regime = signal.get('entry_regime', 'unknown')
+        
+        trigger_reason = ""
+        
+        # Condition 1: Volatility spike
+        if entry_atr > 0 and current_atr > entry_atr * Config.ADAPTIVE_STOP_VOLATILITY_SPIKE:
+            spike_pct = ((current_atr / entry_atr) - 1) * 100
+            trigger_reason = f"volatility spike +{spike_pct:.1f}%"
+        
+        # Condition 2: Regime deterioration
+        if entry_regime in ['trending', 'strong_trend'] and current_regime in ['choppy', 'ranging']:
+            if trigger_reason:
+                trigger_reason += f" + regime {entry_regime}→{current_regime}"
+            else:
+                trigger_reason = f"regime change {entry_regime}→{current_regime}"
+        
+        if not trigger_reason:
+            return (False, None, "no trigger conditions met")
+        
+        # Calculate new stop: breakeven + small buffer
+        buffer = entry * Config.ADAPTIVE_STOP_BREAKEVEN_BUFFER
+        
+        if direction == 'LONG':
+            new_stop = entry + buffer
+            # Only tighten, never widen
+            if new_stop <= signal['stop_loss']:
+                return (False, None, "would widen stop")
+        else:  # SHORT
+            new_stop = entry - buffer
+            # Only tighten, never widen
+            if new_stop >= signal['stop_loss']:
+                return (False, None, "would widen stop")
+        
+        return (True, new_stop, trigger_reason)
     
     def _save_active_signals(self) -> None:
         """Save active signals to file"""
