@@ -57,6 +57,41 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
   git
 
+# Install Python 3.11 specifically (saves 1+ minute per run)
+sudo DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:deadsnakes/ppa -y
+sudo apt-get update -qq
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  python3.11 \
+  python3.11-dev \
+  python3.11-venv \
+  python3.11-distutils
+
+# Set Python 3.11 as default
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Upgrade pip for Python 3.11
+curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3.11
+
+# Verify Python installation
+python3.11 --version
+pip3 --version
+
+# Optional: Pre-install your Python dependencies to speed up pip install
+# This can save another 10-30 seconds per run
+sudo pip3 install \
+  pandas \
+  numpy \
+  requests \
+  ccxt \
+  discord-webhook \
+  loguru \
+  python-dotenv \
+  pybit
+
+# Verify installations
+python3.11 -c "import pandas, numpy, ccxt; print('Packages OK')"
+
 # Clean up to reduce AMI size
 sudo apt-get clean
 sudo apt-get autoremove -y
@@ -166,14 +201,16 @@ aws ec2 terminate-instances \
 
 ## Expected Time Savings
 
-- **Before**: ~45-60 seconds for AWS CLI installation
-- **After**: ~0 seconds (pre-installed)
-- **Total workflow speedup**: ~45-60 seconds per run
+- **AWS CLI installation**: ~45-60 seconds saved
+- **Python 3.11 setup**: ~68 seconds saved  
+- **Python packages (if pre-installed)**: ~10-30 seconds saved
+- **Total savings per run**: ~2-2.5 minutes
 
 With 5-minute cron intervals, this saves:
-- ~9-12 minutes per hour
-- ~216-288 minutes per day
-- **~$0.50-1.00 per month in EC2 costs**
+- ~24-30 minutes per hour
+- ~576-720 minutes (9.6-12 hours) per day
+- **~$2-4 per month in EC2 costs**
+- **Faster signal detection and trading responses**
 
 ## Additional Optimizations (Optional)
 
