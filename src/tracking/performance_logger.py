@@ -171,6 +171,65 @@ class PerformanceLogger:
             logger.error(f"Error calculating today's statistics: {e}")
             return {'total_trades': 0, 'win_rate': 0}
     
+    def get_week_statistics(self) -> Dict:
+        """Get statistics for current week (since Monday)"""
+        try:
+            # Get this week's Monday at midnight
+            today = datetime.now().date()
+            days_since_monday = today.weekday()  # Monday is 0
+            week_start = datetime.combine(today - timedelta(days=days_since_monday), datetime.min.time())
+            
+            # Filter trades from this week only
+            week_trades = [
+                t for t in self.trades 
+                if datetime.fromisoformat(t['timestamp']) >= week_start
+            ]
+            
+            if not week_trades:
+                return {
+                    'total_trades': 0,
+                    'win_rate': 0,
+                    'avg_win': 0,
+                    'avg_loss': 0,
+                    'total_pnl': 0,
+                    'profit_factor': 0
+                }
+            
+            # Calculate metrics
+            total_trades = len(week_trades)
+            wins = [t for t in week_trades if t['pnl'] > 0]
+            losses = [t for t in week_trades if t['pnl'] < 0]
+            
+            win_count = len(wins)
+            loss_count = len(losses)
+            win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
+            
+            avg_win = sum(t['pnl'] for t in wins) / win_count if win_count > 0 else 0
+            avg_loss = sum(t['pnl'] for t in losses) / loss_count if loss_count > 0 else 0
+            
+            total_pnl = sum(t['pnl'] for t in week_trades)
+            
+            gross_profit = sum(t['pnl'] for t in wins)
+            gross_loss = abs(sum(t['pnl'] for t in losses))
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
+            
+            return {
+                'total_trades': total_trades,
+                'wins': win_count,
+                'losses': loss_count,
+                'win_rate': round(win_rate, 2),
+                'avg_win': round(avg_win, 2),
+                'avg_loss': round(avg_loss, 2),
+                'total_pnl': round(total_pnl, 2),
+                'gross_profit': round(gross_profit, 2),
+                'gross_loss': round(gross_loss, 2),
+                'profit_factor': round(profit_factor, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating week's statistics: {e}")
+            return {'total_trades': 0, 'win_rate': 0}
+    
     def get_daily_pnl(self, days: int = 7) -> List[Dict]:
         """Get daily PnL for last N days"""
         try:
@@ -254,6 +313,56 @@ class PerformanceLogger:
             
         except Exception as e:
             logger.error(f"Error saving daily report: {e}")
+            return {}
+    
+    def save_weekly_report(self) -> Dict:
+        """Save weekly report to permanent log file and return the stats"""
+        try:
+            week_stats = self.get_week_statistics()
+            
+            # Get week start date (Monday)
+            today = datetime.now().date()
+            days_since_monday = today.weekday()
+            week_start = today - timedelta(days=days_since_monday)
+            
+            # Create weekly log entry
+            weekly_log = {
+                'week_start': week_start.isoformat(),
+                'week_end': today.isoformat(),
+                'timestamp': datetime.now().isoformat(),
+                'total_trades': week_stats.get('total_trades', 0),
+                'wins': week_stats.get('wins', 0),
+                'losses': week_stats.get('losses', 0),
+                'win_rate': week_stats.get('win_rate', 0),
+                'avg_win': week_stats.get('avg_win', 0),
+                'avg_loss': week_stats.get('avg_loss', 0),
+                'total_pnl': week_stats.get('total_pnl', 0),
+                'gross_profit': week_stats.get('gross_profit', 0),
+                'gross_loss': week_stats.get('gross_loss', 0),
+                'profit_factor': week_stats.get('profit_factor', 0)
+            }
+            
+            # Load existing weekly logs
+            weekly_logs_file = Path(Config.DATA_DIR) / 'weekly_logs.json'
+            weekly_logs = []
+            
+            if weekly_logs_file.exists():
+                with open(weekly_logs_file, 'r') as f:
+                    weekly_logs = json.load(f)
+            
+            # Add this week's log
+            weekly_logs.append(weekly_log)
+            
+            # Save updated logs
+            with open(weekly_logs_file, 'w') as f:
+                json.dump(weekly_logs, f, indent=2)
+            
+            logger.info(f"📊 Weekly report saved: {week_stats.get('total_trades', 0)} trades, ${week_stats.get('total_pnl', 0):+.2f}")
+            
+            return week_stats
+            
+        except Exception as e:
+            logger.error(f"Error saving weekly report: {e}")
             return {}
     
     def _load_trades(self) -> None:

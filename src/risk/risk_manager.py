@@ -8,7 +8,7 @@ from src.core.config import Config
 class RiskManager:
     """Manage trading risk limits and circuit breakers"""
     
-    def __init__(self):
+    def __init__(self, performance_logger=None, discord=None):
         self.equity = Config.INITIAL_CAPITAL
         self.daily_loss = 0.0
         self.weekly_loss = 0.0
@@ -21,6 +21,10 @@ class RiskManager:
         self.last_reset_date = datetime.now().date()
         self.last_weekly_reset = datetime.now().date()
         self.last_volatility_alert: Optional[datetime] = None
+        
+        # Store references for daily report generation
+        self.performance_logger = performance_logger
+        self.discord = discord
         
         # Load persisted state
         self._load_state()
@@ -173,6 +177,36 @@ class RiskManager:
         today = datetime.now().date()
         if today > self.last_reset_date:
             if not skip_reset:
+                # SAVE DAILY REPORT BEFORE RESETTING
+                if self.performance_logger and self.discord:
+                    try:
+                        logger.info("📊 New day detected - Saving daily report before reset")
+                        today_stats = self.performance_logger.save_daily_report()
+                        risk_stats = self.get_risk_stats()
+                        
+                        # Combine stats for Discord display
+                        combined_stats = {
+                            'equity': risk_stats['equity'],
+                            'daily_pnl': risk_stats['daily_pnl'],
+                            'win_rate': today_stats.get('win_rate', 0)
+                        }
+                        
+                        message = f"""
+                        **Daily Performance Report**
+
+                        Trades: {today_stats.get('total_trades', 0)}
+                        Win Rate: {today_stats.get('win_rate', 0):.1f}%
+                        Total PnL: ${today_stats.get('total_pnl', 0):+.2f}
+
+                        Account Equity: ${risk_stats['equity']:.2f}
+                        Daily PnL: ${risk_stats['daily_pnl']:+.2f}
+                        """
+                        
+                        self.discord.send_status_update(message, combined_stats)
+                        logger.info("✅ Daily report saved and sent before reset")
+                    except Exception as e:
+                        logger.error(f"Error saving daily report before reset: {e}")
+                
                 logger.info(f"📅 New day - resetting daily counters")
                 self.daily_pnl = 0.0  # Reset daily PnL
                 self.daily_loss = 0.0
@@ -193,6 +227,36 @@ class RiskManager:
         
         # Check if it's Monday and last reset was not this week
         if today.weekday() == 0 and today > self.last_weekly_reset:
+            # SAVE WEEKLY REPORT BEFORE RESETTING
+            if self.performance_logger and self.discord:
+                try:
+                    logger.info("📊 New week detected - Saving weekly report before reset")
+                    week_stats = self.performance_logger.save_weekly_report()
+                    risk_stats = self.get_risk_stats()
+                    
+                    # Combine stats for Discord display
+                    combined_stats = {
+                        'equity': risk_stats['equity'],
+                        'daily_pnl': week_stats.get('total_pnl', 0),  # Show weekly PnL
+                        'win_rate': week_stats.get('win_rate', 0)
+                    }
+                    
+                    message = f"""
+                    **Weekly Performance Report**
+
+                    Trades: {week_stats.get('total_trades', 0)}
+                    Win Rate: {week_stats.get('win_rate', 0):.1f}%
+                    Total PnL: ${week_stats.get('total_pnl', 0):+.2f}
+
+                    Profit Factor: {week_stats.get('profit_factor', 0):.2f}
+                    Account Equity: ${risk_stats['equity']:.2f}
+                    """
+                    
+                    self.discord.send_status_update(message, combined_stats)
+                    logger.info("✅ Weekly report saved and sent before reset")
+                except Exception as e:
+                    logger.error(f"Error saving weekly report before reset: {e}")
+            
             logger.info(f"📅 New week - resetting weekly counters")
             self.weekly_loss = 0.0
             self.weekly_pnl = 0.0

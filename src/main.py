@@ -48,10 +48,12 @@ class SignalBot:
         
         # Initialize components
         self.data_manager = DataManager()
-        self.risk_manager = RiskManager()
         self.signal_tracker = SignalTracker()
         self.performance_logger = PerformanceLogger()
         self.discord = DiscordNotifier()
+        
+        # Initialize risk manager with performance logger (for daily report saving)
+        self.risk_manager = RiskManager(performance_logger=self.performance_logger, discord=self.discord)
         
         logger.info("✓ All components initialized")
         
@@ -76,11 +78,6 @@ class SignalBot:
             logger.info("=" * 70)
             logger.info(f"🔍 Scanning markets at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info("=" * 70)
-            
-            # Check if it's a new day (before reset) and send daily report
-            if self.risk_manager._check_daily_reset(skip_reset=True):
-                logger.info("📊 New day detected - Generating daily report before reset")
-                self.send_daily_report()
             
             # Get active symbols (do this BEFORE trading check to monitor existing signals)
             active_symbols = self.signal_tracker.get_active_symbols()
@@ -442,7 +439,7 @@ Daily PnL: ${risk_stats['daily_pnl']:+.2f}
         
         # Schedule tasks
         schedule.every(Config.SCAN_INTERVAL_SECONDS).seconds.do(self.scan_markets)
-        schedule.every().day.at("00:00").do(self.send_daily_report)
+        # Note: Daily report is now auto-sent by risk_manager when new day is detected
         
         # Run initial scan
         self.scan_markets()
