@@ -188,11 +188,11 @@ class SignalBot:
             # Calculate score first
             score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
             
-            # Allow signal if entry requirements met OR score >= 80
-            if long_check['valid'] or score >= 80:
+            # Allow signal if entry requirements met OR score >= 85
+            if long_check['valid'] or score >= 85:
                 if not long_check['valid']:
                     logger.warning(f"{symbol}: ⚠️  LONG entry requirements not fully met, but score is high ({score}/100) - Creating signal with override")
-                    reason = f"High score override (80+): {long_check['reason']}"
+                    reason = f"High score override (85+): {long_check['reason']}"
                 else:
                     logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
                     reason = long_check['reason']
@@ -208,11 +208,11 @@ class SignalBot:
             # Calculate score first
             score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
             
-            # Allow signal if entry requirements met OR score >= 80
-            if short_check['valid'] or score >= 80:
+            # Allow signal if entry requirements met OR score >= 85
+            if short_check['valid'] or score >= 85:
                 if not short_check['valid']:
                     logger.warning(f"{symbol}: ⚠️  SHORT entry requirements not fully met, but score is high ({score}/100) - Creating signal with override")
-                    reason = f"High score override (80+): {short_check['reason']}"
+                    reason = f"High score override (85+): {short_check['reason']}"
                 else:
                     logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
                     reason = short_check['reason']
