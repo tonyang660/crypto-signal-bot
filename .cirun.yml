@@ -7,7 +7,7 @@ runners:
     instance_type: "t3.micro"  # 2 vCPU, 1GB RAM
     
     # Ubuntu 22.04 LTS AMI for us-east-2 (Ohio)
-    machine_image: "ami-01305135dbcaee91e"  # Ubuntu 22.04 LTS x86_64
+    machine_image: "ami-0e02c9f5a426d76bf"  # Ubuntu 22.04 LTS x86_64
     
     # Labels to use in workflow
     labels:
