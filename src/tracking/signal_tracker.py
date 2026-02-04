@@ -422,7 +422,9 @@ class SignalTracker:
             # Update signal state
             signal['realized_pnl'] += partial_pnl
             signal['remaining_percent'] *= 0.5  # 50% remains
-            signal['stop_loss'] = signal['original_stop_loss']  # Restore original stop for remaining 50%
+            # Backward compatibility: use stop_loss if original_stop_loss doesn't exist
+            original_stop = signal.get('original_stop_loss', signal['stop_loss'])
+            signal['stop_loss'] = original_stop  # Restore original stop for remaining 50%
             signal['partial_protection_active'] = False  # Deactivate partial protection
             
             self._save_active_signals()
@@ -605,7 +607,8 @@ class SignalTracker:
         
         # Calculate profit in R multiples
         entry = signal['entry_price']
-        original_stop = signal['original_stop_loss']
+        # Backward compatibility: use stop_loss if original_stop_loss doesn't exist
+        original_stop = signal.get('original_stop_loss', signal['stop_loss'])
         direction = signal['direction']
         
         if direction == 'LONG':
