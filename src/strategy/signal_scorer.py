@@ -15,10 +15,11 @@ class SignalScorer:
         Calculate signal quality score
         
         Breakdown:
-        - HTF Alignment: 25 points
+        - HTF Alignment: 20 points
         - Momentum Quality (MACD): 20 points
-        - RSI Quality: 15 points (NEW)
-        - Entry Location: 20 points
+        - RSI Quality: 15 points
+        - Entry Location: 15 points
+        - Break of Structure: 10 points
         - Volatility Suitability: 10 points
         - Volume Confirmation: 10 points
         
@@ -137,21 +138,15 @@ class SignalScorer:
                 else:
                     score += 5
             
-            # === 5. Volatility Suitability (0-10 points) ===
-            current_atr = primary_df['atr'].iloc[-1]
-            avg_atr = primary_df['atr_sma'].iloc[-1]
+            # === 5. Break of Structure (0-10 points) ===
+            # Check primary timeframe for BOS confirmation
+            bos_detected, bars_ago, structure_level = MarketStructure.detect_break_of_structure(
+                primary_df, direction
+            )
+            bos_points, _ = MarketStructure.get_bos_quality_score(bos_detected, bars_ago)
+            score += bos_points
             
-            if avg_atr > 0:
-                atr_ratio = current_atr / avg_atr
-                
-                if 0.9 <= atr_ratio <= 1.3:  # Normal volatility
-                    score += 10
-                elif 0.7 <= atr_ratio <= 1.6:
-                    score += 7
-                elif 0.5 <= atr_ratio <= 2.0:
-                    score += 3
-            
-            # === 5. Volume Confirmation (0-10 points) ===
+            # === 6. Volume Confirmation (0-10 points) ===
             volume = entry_df['volume'].iloc[-1]
             volume_sma = entry_df['volume_sma'].iloc[-1]
             
@@ -201,10 +196,11 @@ class SignalScorer:
         """
         try:
             breakdown = {
-                'htf_alignment': {'points': 0, 'max': 25, 'details': ''},
+                'htf_alignment': {'points': 0, 'max': 20, 'details': ''},
                 'momentum': {'points': 0, 'max': 20, 'details': ''},
                 'rsi_quality': {'points': 0, 'max': 15, 'details': ''},
-                'entry_location': {'points': 0, 'max': 20, 'details': ''},
+                'entry_location': {'points': 0, 'max': 15, 'details': ''},
+                'break_of_structure': {'points': 0, 'max': 10, 'details': ''},
                 'volatility': {'points': 0, 'max': 10, 'details': ''},
                 'volume': {'points': 0, 'max': 10, 'details': ''}
             }
@@ -214,7 +210,7 @@ class SignalScorer:
             primary_df = data['primary']
             entry_df = data['entry']
             
-            # === 1. HTF Trend Alignment (0-30 points) ===
+            # === 1. HTF Trend Alignment (0-20 points) ===
             htf_trend = MarketStructure.get_trend_direction(htf_df)
             
             if direction == 'long':
@@ -226,25 +222,25 @@ class SignalScorer:
                         distance = (price - ema_200) / ema_200
                         
                         if distance > 0.05:
-                            breakdown['htf_alignment']['points'] = 25
+                            breakdown['htf_alignment']['points'] = 20
                             breakdown['htf_alignment']['details'] = f'Strongly bullish, {distance*100:.1f}% above EMA200'
-                            score += 25
+                            score += 20
                         elif distance > 0.02:
-                            breakdown['htf_alignment']['points'] = 18
+                            breakdown['htf_alignment']['points'] = 15
                             breakdown['htf_alignment']['details'] = f'Bullish, {distance*100:.1f}% above EMA200'
-                            score += 18
+                            score += 15
                         else:
-                            breakdown['htf_alignment']['points'] = 12
+                            breakdown['htf_alignment']['points'] = 10
                             breakdown['htf_alignment']['details'] = f'Weakly bullish, {distance*100:.1f}% above EMA200'
-                            score += 12
+                            score += 10
                     else:
-                        breakdown['htf_alignment']['points'] = 12
+                        breakdown['htf_alignment']['points'] = 10
                         breakdown['htf_alignment']['details'] = 'Bullish trend'
-                        score += 12
+                        score += 10
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 10
+                    breakdown['htf_alignment']['points'] = 7
                     breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 10
+                    score += 7
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             
@@ -257,25 +253,25 @@ class SignalScorer:
                         distance = (ema_200 - price) / ema_200
                         
                         if distance > 0.05:
-                            breakdown['htf_alignment']['points'] = 25
+                            breakdown['htf_alignment']['points'] = 20
                             breakdown['htf_alignment']['details'] = f'Strongly bearish, {distance*100:.1f}% below EMA200'
-                            score += 25
+                            score += 20
                         elif distance > 0.02:
-                            breakdown['htf_alignment']['points'] = 18
+                            breakdown['htf_alignment']['points'] = 15
                             breakdown['htf_alignment']['details'] = f'Bearish, {distance*100:.1f}% below EMA200'
-                            score += 18
+                            score += 15
                         else:
-                            breakdown['htf_alignment']['points'] = 12
+                            breakdown['htf_alignment']['points'] = 10
                             breakdown['htf_alignment']['details'] = f'Weakly bearish, {distance*100:.1f}% below EMA200'
-                            score += 12
+                            score += 10
                     else:
-                        breakdown['htf_alignment']['points'] = 12
+                        breakdown['htf_alignment']['points'] = 10
                         breakdown['htf_alignment']['details'] = 'Bearish trend'
-                        score += 12
+                        score += 10
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 10
+                    breakdown['htf_alignment']['points'] = 7
                     breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 10
+                    score += 7
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             
@@ -356,43 +352,35 @@ class SignalScorer:
                 distance_from_ema = abs(price - ema_21) / atr
                 
                 if distance_from_ema < 0.3:
-                    breakdown['entry_location']['points'] = 20
-                    breakdown['entry_location']['details'] = f'Excellent entry location ({distance_from_ema:.2f} ATR from EMA)'
-                    score += 20
-                elif distance_from_ema < 0.6:
                     breakdown['entry_location']['points'] = 15
-                    breakdown['entry_location']['details'] = f'Good entry location ({distance_from_ema:.2f} ATR from EMA)'
+                    breakdown['entry_location']['details'] = f'Excellent entry location ({distance_from_ema:.2f} ATR from EMA)'
                     score += 15
+                elif distance_from_ema < 0.6:
+                    breakdown['entry_location']['points'] = 12
+                    breakdown['entry_location']['details'] = f'Good entry location ({distance_from_ema:.2f} ATR from EMA)'
+                    score += 12
                 elif distance_from_ema < 1.0:
-                    breakdown['entry_location']['points'] = 10
+                    breakdown['entry_location']['points'] = 8
                     breakdown['entry_location']['details'] = f'Fair entry location ({distance_from_ema:.2f} ATR from EMA)'
-                    score += 10
+                    score += 8
                 else:
-                    breakdown['entry_location']['points'] = 5
+                    breakdown['entry_location']['points'] = 4
                     breakdown['entry_location']['details'] = f'Poor entry location ({distance_from_ema:.2f} ATR from EMA)'
-                    score += 5
+                    score += 4
             
-            # === 5. Volatility Suitability (0-10 points) ===
-            current_atr = primary_df['atr'].iloc[-1]
-            avg_atr = primary_df['atr_sma'].iloc[-1]
+            # === 5. Break of Structure (0-10 points) ===
+            # Check for BOS on primary timeframe (15M)
+            bos_detected, bars_ago, structure_level = MarketStructure.detect_break_of_structure(
+                primary_df, direction, lookback=20, confirmation_bars=20
+            )
+            bos_points, bos_desc = MarketStructure.get_bos_quality_score(bos_detected, bars_ago, max_points=10)
             
-            if avg_atr > 0:
-                atr_ratio = current_atr / avg_atr
-                
-                if 0.9 <= atr_ratio <= 1.3:
-                    breakdown['volatility']['points'] = 10
-                    breakdown['volatility']['details'] = f'Normal volatility (ATR ratio: {atr_ratio:.2f})'
-                    score += 10
-                elif 0.7 <= atr_ratio <= 1.6:
-                    breakdown['volatility']['points'] = 7
-                    breakdown['volatility']['details'] = f'Acceptable volatility (ATR ratio: {atr_ratio:.2f})'
-                    score += 7
-                elif 0.5 <= atr_ratio <= 2.0:
-                    breakdown['volatility']['points'] = 3
-                    breakdown['volatility']['details'] = f'Marginal volatility (ATR ratio: {atr_ratio:.2f})'
-                    score += 3
+            breakdown['break_of_structure']['points'] = bos_points
+            if bos_detected:
+                breakdown['break_of_structure']['details'] = f'{bos_desc} at ${structure_level:.2f}'
             else:
-                breakdown['volatility']['details'] = f'Extreme volatility (ATR ratio: {atr_ratio:.2f})'
+                breakdown['break_of_structure']['details'] = 'No structure break detected'
+            score += bos_points
             
             # === 6. Volume Confirmation (0-10 points) ===
             volume = entry_df['volume'].iloc[-1]
@@ -424,6 +412,7 @@ class SignalScorer:
             logger.info(f"  Momentum (MACD): {breakdown['momentum']['points']:2d}/{breakdown['momentum']['max']} - {breakdown['momentum']['details']}")
             logger.info(f"  RSI Quality:     {breakdown['rsi_quality']['points']:2d}/{breakdown['rsi_quality']['max']} - {breakdown['rsi_quality']['details']}")
             logger.info(f"  Entry Location:  {breakdown['entry_location']['points']:2d}/{breakdown['entry_location']['max']} - {breakdown['entry_location']['details']}")
+            logger.info(f"  Break Structure: {breakdown['break_of_structure']['points']:2d}/{breakdown['break_of_structure']['max']} - {breakdown['break_of_structure']['details']}")
             logger.info(f"  Volatility:      {breakdown['volatility']['points']:2d}/{breakdown['volatility']['max']} - {breakdown['volatility']['details']}")
             logger.info(f"  Volume:          {breakdown['volume']['points']:2d}/{breakdown['volume']['max']} - {breakdown['volume']['details']}")
             logger.info(f"  TOTAL SCORE:     {final_score}/100")
