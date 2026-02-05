@@ -155,8 +155,9 @@ class SignalScorer:
                 # Continue without BOS points
             
             # === 6. Volume Confirmation (0-8 points) ===
-            volume = entry_df['volume'].iloc[-1]
-            volume_sma = entry_df['volume_sma'].iloc[-1]
+            # Use PRIMARY timeframe (15m) for volume - more representative than 5m
+            volume = primary_df['volume'].iloc[-1]
+            volume_sma = primary_df['volume_sma'].iloc[-1]
             
             if volume_sma > 0:
                 volume_ratio = volume / volume_sma
@@ -426,11 +427,21 @@ class SignalScorer:
                 breakdown['volatility']['details'] = 'Invalid ATR data'
             
             # === 7. Volume Confirmation (0-8 points) ===
-            volume = entry_df['volume'].iloc[-1]
-            volume_sma = entry_df['volume_sma'].iloc[-1]
+            # Use PRIMARY timeframe (15m) for volume - more representative than 5m
+            volume = primary_df['volume'].iloc[-1]
+            volume_sma = primary_df['volume_sma'].iloc[-1]
+            
+            # Also check last 2 candles for recent volume trend
+            recent_volumes = primary_df['volume'].iloc[-2:].values
+            avg_recent = recent_volumes.mean()
             
             if volume_sma > 0:
                 volume_ratio = volume / volume_sma
+                recent_ratio = avg_recent / volume_sma
+                
+                # Log diagnostic info
+                logger.debug(f"Volume check: current={volume:,.0f}, avg={volume_sma:,.0f}, "
+                           f"ratio={volume_ratio:.2f}x, recent_2_candles_avg={avg_recent:,.0f} ({recent_ratio:.2f}x)")
                 
                 # More lenient thresholds for crypto (volume less reliable)
                 if volume_ratio > 1.2:  # Was 1.5x
