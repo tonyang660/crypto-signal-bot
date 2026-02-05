@@ -146,7 +146,8 @@ class MarketStructure:
                 structure_level = historical_df.tail(lookback)['high'].max()
                 
                 # Check if price has broken above this level in recent bars
-                for i in range(len(recent_df)):
+                # Search from MOST RECENT to OLDEST to find the freshest BOS
+                for i in range(len(recent_df) - 1, -1, -1):
                     if recent_df.iloc[i]['high'] > structure_level:
                         bars_ago = len(recent_df) - 1 - i
                         return True, bars_ago, structure_level
@@ -158,7 +159,8 @@ class MarketStructure:
                 structure_level = historical_df.tail(lookback)['low'].min()
                 
                 # Check if price has broken below this level in recent bars
-                for i in range(len(recent_df)):
+                # Search from MOST RECENT to OLDEST to find the freshest BOS
+                for i in range(len(recent_df) - 1, -1, -1):
                     if recent_df.iloc[i]['low'] < structure_level:
                         bars_ago = len(recent_df) - 1 - i
                         return True, bars_ago, structure_level
