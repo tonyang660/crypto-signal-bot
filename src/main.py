@@ -423,7 +423,7 @@ class SignalBot:
                             "Full position protected at breakeven."
                         )
                         
-                        self.discord.send_info(
+                        self.discord.send_status_update(
                             f"🛡️ **Adaptive Stop Protection - {symbol}**\n\n"
                             f"Market conditions worsened while in profit.\n"
                             f"{protection_desc}\n\n"
@@ -507,7 +507,7 @@ class SignalBot:
                 
                 elif hit_info['type'] == 'partial_protection_exit':
                     # Partial protection triggered - 50% exited at breakeven
-                    self.discord.send_info(
+                    self.discord.send_status_update(
                         f"⚡ **Partial Protection Exit - {symbol}**\n\n"
                         f"50% of position exited at breakeven.\n"
                         f"Remaining 50% continues with original stop.\n\n"

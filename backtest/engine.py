@@ -56,6 +56,10 @@ class Position:
     remaining_percent: float = 100.0
     realized_pnl: float = 0.0
     
+    # Adaptive stop tracking
+    entry_atr: float = 0.0
+    adaptive_stop_triggered: bool = False
+    
 @dataclass
 class Trade:
     """Completed trade record"""
@@ -130,6 +134,14 @@ class BacktestEngine:
         logger.info(f"Backtest period: {start_date} to {end_date}")
         logger.info(f"Total candles: {len(sorted_dates)}")
         
+        # Apply warmup period if configured
+        if hasattr(BacktestConfig, 'WARMUP_DATE'):
+            warmup_date = BacktestConfig.WARMUP_DATE
+            logger.info(f"Warmup period: {start_date} to {warmup_date} (indicators only, no trading)")
+            logger.info(f"Trading period: {warmup_date} to {end_date}")
+        else:
+            warmup_date = start_date
+        
         # Process each candle
         for i, current_time in enumerate(sorted_dates):
             if i % 1000 == 0:
@@ -140,6 +152,11 @@ class BacktestEngine:
             
             # Update active positions (check TP/SL)
             self._update_positions(current_time)
+            
+            # Skip signal scanning during warmup period
+            if current_time < warmup_date:
+                self.equity_curve.append((current_time, self.equity))
+                continue
             
             # Check if trading allowed
             can_trade, reason = self._can_trade(current_time)
@@ -167,7 +184,7 @@ class BacktestEngine:
         return results
     
     def _update_positions(self, current_time: datetime):
-        """Update all active positions - check for TP/SL hits"""
+        """Update all active positions - check for TP/SL hits and adaptive stops"""
         symbols_to_close = []
         
         for symbol, position in self.active_positions.items():
@@ -184,6 +201,40 @@ class BacktestEngine:
             high = candle['high']
             low = candle['low']
             close = candle['close']
+            
+            # === ADAPTIVE STOP CHECK (before checking TP/SL hits) ===
+            # Only check if enabled and position hasn't triggered adaptive stop yet
+            if BacktestConfig.ADAPTIVE_STOP_ENABLED and not getattr(position, 'adaptive_stop_triggered', False):
+                # Get current market data
+                data = self._get_mtf_data(symbol, current_time)
+                if data:
+                    # Add indicators
+                    for tf in data:
+                        data[tf] = Indicators.add_all_indicators(data[tf])
+                    
+                    current_atr = data['primary']['atr'].iloc[-1]
+                    current_regime = RegimeDetector.detect_regime(data['primary'])
+                    entry_atr = getattr(position, 'entry_atr', 0.0)
+                    
+                    # Check if adaptive stop should trigger
+                    should_trigger, new_stop, reason = self._check_adaptive_stop_trigger(
+                        position, close, current_atr, current_regime, entry_atr
+                    )
+                    
+                    if should_trigger and new_stop:
+                        logger.info(f"{current_time} {symbol}: 🛡️ Adaptive stop triggered: {reason} | New SL: ${new_stop:.2f}")
+                        
+                        # Handle partial vs full protection
+                        if BacktestConfig.ADAPTIVE_STOP_PARTIAL_PROTECTION:
+                            # Close 50% at breakeven, keep 50% running with original stop
+                            # For simplicity in backtest, we'll just update the stop to new level
+                            # and mark as triggered
+                            position.stop_loss = new_stop
+                            position.adaptive_stop_triggered = True
+                        else:
+                            # Full protection: move stop to breakeven
+                            position.stop_loss = new_stop
+                            position.adaptive_stop_triggered = True
             
             # Check for hits (CONSERVATIVE MODE)
             if position.direction == 'long':
@@ -344,14 +395,55 @@ class BacktestEngine:
         logger.info(f"{exit_time} {position.symbol}: Trade closed | {reason} | P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
     
     def _scan_for_signals(self, current_time: datetime):
-        """Scan for new trading signals (uses live bot logic)"""
+        """Scan for new trading signals (uses EXACT live bot logic)"""
+        # === PHASE 1: BTC REGIME CHECK (Market-wide filter) ===
+        # Check BTC conditions BEFORE individual symbol analysis
+        btc_threshold_adj = 0
+        btc_position_mult = 1.0
+        btc_max_signals_adj = 0
+        
+        if 'BTCUSDT' in self.data:
+            try:
+                btc_data = self._get_mtf_data('BTCUSDT', current_time)
+                if btc_data:
+                    # Validate BTC data has enough candles for indicators
+                    if len(btc_data['htf']) < 200:
+                        logger.debug(f"{current_time}: Insufficient BTC data for regime check ({len(btc_data['htf'])} candles)")
+                        btc_threshold_adj = 5  # Conservative default
+                        btc_position_mult = 0.9
+                        btc_max_signals_adj = 0
+                    else:
+                        btc_data['htf'] = Indicators.add_all_indicators(btc_data['htf'])
+                        btc_regime_info = RegimeDetector.check_btc_regime(btc_data['htf'])
+                        
+                        # Apply BTC regime adjustments
+                        btc_threshold_adj = btc_regime_info['score_threshold_adj']
+                        btc_position_mult = btc_regime_info['position_size_mult']
+                        btc_max_signals_adj = btc_regime_info['max_signals_adj']
+                        
+                        logger.debug(f"{current_time}: BTC Regime {btc_regime_info['regime']} - Threshold adj: +{btc_threshold_adj}, Position mult: {btc_position_mult:.2f}")
+            except Exception as e:
+                logger.warning(f"BTC regime check failed: {e}, proceeding with defaults")
+                btc_threshold_adj = 5
+                btc_position_mult = 0.9
+                btc_max_signals_adj = 0
+        
+        # Check adjusted max signals limit
+        current_signals = len(self.active_positions)
+        adjusted_max_signals = max(1, BacktestConfig.MAX_TOTAL_ACTIVE_SIGNALS + btc_max_signals_adj)
+        
+        if current_signals >= adjusted_max_signals:
+            logger.debug(f"{current_time}: Max signals reached ({current_signals}/{adjusted_max_signals}) due to BTC regime")
+            return
+        
+        # === PHASE 2: SCAN INDIVIDUAL SYMBOLS ===
         for symbol in BacktestConfig.SYMBOLS:
             # Skip if position already exists
             if symbol in self.active_positions:
                 continue
             
             # Check position limits
-            if len(self.active_positions) >= BacktestConfig.MAX_TOTAL_ACTIVE_SIGNALS:
+            if len(self.active_positions) >= adjusted_max_signals:
                 continue
             
             try:
@@ -361,38 +453,55 @@ class BacktestEngine:
                 if not data:
                     continue
                 
+                # Validate sufficient data for indicators (need at least 200 candles for EMA200)
+                min_candles_needed = 200
+                if (len(data['htf']) < min_candles_needed or 
+                    len(data['primary']) < min_candles_needed or 
+                    len(data['entry']) < min_candles_needed):
+                    logger.debug(f"{current_time} {symbol}: Insufficient data (HTF: {len(data['htf'])}, Primary: {len(data['primary'])}, Entry: {len(data['entry'])})")
+                    continue
+                
                 # Add indicators
                 for tf in data:
                     data[tf] = Indicators.add_all_indicators(data[tf])
                 
-                # Check regime
+                # Check individual symbol regime
                 regime = RegimeDetector.detect_regime(data['primary'])
                 
                 if not RegimeDetector.should_trade_regime(regime):
                     continue
                 
+                # Get base score threshold based on equity state
+                account_state = 'drawdown' if self.equity < self.initial_equity * 0.98 else 'normal'
+                base_threshold = BacktestConfig.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else BacktestConfig.SIGNAL_THRESHOLD_NORMAL
+                
+                # Apply BTC regime adjustment to threshold
+                threshold = base_threshold + btc_threshold_adj
+                
                 # Check long entry
                 long_check = EntryLogic.check_long_entry(data)
-                score, _ = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
                 
-                threshold = BacktestConfig.SIGNAL_THRESHOLD_DRAWDOWN if self.equity < self.initial_equity * 0.98 else BacktestConfig.SIGNAL_THRESHOLD_NORMAL
-                
-                if (long_check['valid'] or score >= 80) and score >= threshold:
-                    self._create_position(symbol, 'long', data, current_time, long_check['reason'], score, regime)
+                # Allow signal if entry requirements met OR score >= 85 (exceptional score override)
+                if (long_check['valid'] or score >= 85) and score >= threshold:
+                    reason = long_check['reason'] if long_check['valid'] else f"High score override (85+): {long_check['reason']}"
+                    self._create_position(symbol, 'long', data, current_time, reason, score, regime, btc_position_mult)
                     continue
                 
                 # Check short entry
                 short_check = EntryLogic.check_short_entry(data)
-                score, _ = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
                 
-                if (short_check['valid'] or score >= 80) and score >= threshold:
-                    self._create_position(symbol, 'short', data, current_time, short_check['reason'], score, regime)
+                # Allow signal if entry requirements met OR score >= 85 (exceptional score override)
+                if (short_check['valid'] or score >= 85) and score >= threshold:
+                    reason = short_check['reason'] if short_check['valid'] else f"High score override (85+): {short_check['reason']}"
+                    self._create_position(symbol, 'short', data, current_time, reason, score, regime, btc_position_mult)
                 
             except Exception as e:
                 logger.error(f"Error scanning {symbol} at {current_time}: {e}")
     
-    def _create_position(self, symbol: str, direction: str, data: Dict, entry_time: datetime, reason: str, score: int, regime: str):
-        """Create new position (on candle close)"""
+    def _create_position(self, symbol: str, direction: str, data: Dict, entry_time: datetime, reason: str, score: int, regime: str, btc_position_mult: float = 1.0):
+        """Create new position (on candle close) - MATCHES LIVE BOT LOGIC"""
         entry_price = data['entry']['close'].iloc[-1]
         
         # Apply entry slippage
@@ -425,10 +534,20 @@ class BacktestEngine:
         contracts = position_size_info['contracts']
         margin_used = position_size_info['margin_used']
         
+        # Apply BTC regime position size adjustment
+        if btc_position_mult < 1.0:
+            original_contracts = contracts
+            contracts = max(1, int(contracts * btc_position_mult))
+            margin_used = margin_used * btc_position_mult
+            logger.debug(f"{entry_time} {symbol}: BTC regime adjusted position: {original_contracts} → {contracts} contracts ({btc_position_mult:.1%} multiplier)")
+        
         # Entry fee
         entry_value = entry_price * contracts
         entry_fee = entry_value * (BacktestConfig.TAKER_FEE / 100)
         self.total_fees_paid += entry_fee
+        
+        # Get entry ATR for adaptive stop monitoring
+        entry_atr = data['primary']['atr'].iloc[-1]
         
         # Create position
         position = Position(
@@ -446,6 +565,9 @@ class BacktestEngine:
             entry_reason=reason,
             realized_pnl=-entry_fee  # Start with negative (entry fee)
         )
+        
+        # Store entry ATR for adaptive stops (add as attribute)
+        position.entry_atr = entry_atr
         
         self.active_positions[symbol] = position
         
@@ -501,6 +623,81 @@ class BacktestEngine:
             return False, f"{self.consecutive_losses} consecutive losses"
         
         return True, "OK"
+    
+    def _check_adaptive_stop_trigger(
+        self,
+        position: Position,
+        current_price: float,
+        current_atr: float,
+        current_regime: str,
+        entry_atr: float
+    ) -> Tuple[bool, Optional[float], str]:
+        """
+        Check if adaptive stop protection should be triggered
+        
+        Mirrors the logic from SignalTracker.check_adaptive_stop_trigger
+        
+        Returns:
+            (should_trigger, new_stop_level, reason)
+        """
+        # Calculate profit in R multiples
+        entry = position.entry_price
+        original_stop = position.stop_loss  # Use current stop as original (we don't modify during trailing)
+        direction = position.direction
+        
+        if direction == 'long':
+            stop_distance = entry - original_stop
+            profit_distance = current_price - entry
+        else:  # short
+            stop_distance = original_stop - entry
+            profit_distance = entry - current_price
+        
+        # Avoid division by zero
+        if stop_distance <= 0:
+            return (False, None, "invalid stop distance")
+        
+        profit_r = profit_distance / stop_distance
+        
+        # Must be profitable enough
+        if profit_r < BacktestConfig.ADAPTIVE_STOP_MIN_PROFIT_R:
+            return (False, None, f"profit {profit_r:.2f}R below threshold")
+        
+        # Check for trigger conditions
+        entry_regime = position.regime
+        
+        trigger_reason = ""
+        
+        # Condition 1: Volatility spike
+        if entry_atr > 0 and current_atr > entry_atr * BacktestConfig.ADAPTIVE_STOP_VOLATILITY_SPIKE:
+            spike_pct = ((current_atr / entry_atr) - 1) * 100
+            trigger_reason = f"volatility spike +{spike_pct:.1f}%"
+        
+        # Condition 2: Regime deterioration
+        if BacktestConfig.ADAPTIVE_STOP_REGIME_CHANGE:
+            if entry_regime in ['trending', 'strong_trend'] and current_regime in ['choppy', 'ranging', 'low_volatility']:
+                if trigger_reason:
+                    trigger_reason += f" + regime {entry_regime}→{current_regime}"
+                else:
+                    trigger_reason = f"regime change {entry_regime}→{current_regime}"
+        
+        if not trigger_reason:
+            return (False, None, "no trigger conditions met")
+        
+        # Calculate new stop: breakeven + small buffer
+        buffer = entry * BacktestConfig.ADAPTIVE_STOP_BREAKEVEN_BUFFER
+        
+        if direction == 'long':
+            new_stop = entry + buffer
+            # Only tighten, never widen
+            if new_stop <= position.stop_loss:
+                return (False, None, "would widen stop")
+        else:  # short
+            new_stop = entry - buffer
+            # Only tighten, never widen
+            if new_stop >= position.stop_loss:
+                return (False, None, "would widen stop")
+        
+        return (True, new_stop, trigger_reason)
     
     def _check_daily_reset(self, current_time: datetime):
         """Reset daily counters"""

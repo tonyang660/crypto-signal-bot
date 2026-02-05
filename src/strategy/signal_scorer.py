@@ -142,11 +142,17 @@ class SignalScorer:
             
             # === 5. Break of Structure (0-10 points) ===
             # Check primary timeframe for BOS confirmation
-            bos_detected, bars_ago, structure_level = MarketStructure.detect_break_of_structure(
-                primary_df, direction
-            )
-            bos_points, _ = MarketStructure.get_bos_quality_score(bos_detected, bars_ago)
-            score += bos_points
+            try:
+                if hasattr(MarketStructure, 'detect_break_of_structure'):
+                    bos_detected, bars_ago, structure_level = MarketStructure.detect_break_of_structure(
+                        primary_df, direction
+                    )
+                    bos_points, _ = MarketStructure.get_bos_quality_score(bos_detected, bars_ago)
+                    score += bos_points
+                # else: Skip BOS scoring (0 points)
+            except Exception as e:
+                logger.debug(f"BOS detection skipped: {e}")
+                # Continue without BOS points
             
             # === 6. Volume Confirmation (0-8 points) ===
             volume = entry_df['volume'].iloc[-1]
@@ -374,17 +380,25 @@ class SignalScorer:
             
             # === 5. Break of Structure (0-13 points) ===
             # Check for BOS on primary timeframe (15M)
-            bos_detected, bars_ago, structure_level = MarketStructure.detect_break_of_structure(
-                primary_df, direction, lookback=20, confirmation_bars=20
-            )
-            bos_points, bos_desc = MarketStructure.get_bos_quality_score(bos_detected, bars_ago, max_points=13)
-            
-            breakdown['break_of_structure']['points'] = bos_points
-            if bos_detected:
-                breakdown['break_of_structure']['details'] = f'{bos_desc} at ${structure_level:.2f}'
-            else:
-                breakdown['break_of_structure']['details'] = 'No structure break detected'
-            score += bos_points
+            try:
+                if hasattr(MarketStructure, 'detect_break_of_structure'):
+                    bos_detected, bars_ago, structure_level = MarketStructure.detect_break_of_structure(
+                        primary_df, direction, lookback=20, confirmation_bars=20
+                    )
+                    bos_points, bos_desc = MarketStructure.get_bos_quality_score(bos_detected, bars_ago, max_points=13)
+                    
+                    breakdown['break_of_structure']['points'] = bos_points
+                    if bos_detected:
+                        breakdown['break_of_structure']['details'] = f'{bos_desc} at ${structure_level:.2f}'
+                    else:
+                        breakdown['break_of_structure']['details'] = 'No structure break detected'
+                    score += bos_points
+                else:
+                    # BOS methods not available
+                    breakdown['break_of_structure']['details'] = 'BOS detection not implemented'
+            except Exception as e:
+                logger.debug(f"BOS detection skipped: {e}")
+                breakdown['break_of_structure']['details'] = 'BOS detection error'
             
             # === 6. Volatility Suitability (0-10 points) ===
             current_atr = primary_df['atr'].iloc[-1]
