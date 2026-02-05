@@ -90,7 +90,7 @@ class Indicators:
         # RSI
         df['rsi'] = Indicators.calculate_rsi(df, Config.RSI_PERIOD)
         
-        # Volume SMA
-        df['volume_sma'] = df['volume'].rolling(20).mean()
+        # Volume SMA (100 periods = ~8 hours on 5m, captures full trading session)
+        df['volume_sma'] = df['volume'].rolling(100).mean()
         
         return df

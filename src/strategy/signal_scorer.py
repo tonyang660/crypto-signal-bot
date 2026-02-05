@@ -161,13 +161,14 @@ class SignalScorer:
             if volume_sma > 0:
                 volume_ratio = volume / volume_sma
                 
-                if volume_ratio > 1.5:  # Significantly above average
+                # More lenient thresholds for crypto (volume less reliable)
+                if volume_ratio > 1.2:  # Was 1.5x
                     score += 8
-                elif volume_ratio > 1.2:
+                elif volume_ratio > 0.9:  # Was 1.2x
                     score += 5
-                elif volume_ratio > 1.0:
+                elif volume_ratio > 0.7:  # Was 1.0x
                     score += 3
-                elif volume_ratio > 0.8:
+                elif volume_ratio > 0.5:  # Was 0.8x
                     score += 1
             
             return min(score, 100)  # Cap at 100
@@ -431,19 +432,20 @@ class SignalScorer:
             if volume_sma > 0:
                 volume_ratio = volume / volume_sma
                 
-                if volume_ratio > 1.5:
+                # More lenient thresholds for crypto (volume less reliable)
+                if volume_ratio > 1.2:  # Was 1.5x
                     breakdown['volume']['points'] = 8
                     breakdown['volume']['details'] = f'Strong volume ({volume_ratio:.2f}x average)'
                     score += 8
-                elif volume_ratio > 1.2:
+                elif volume_ratio > 0.9:  # Was 1.2x
                     breakdown['volume']['points'] = 5
                     breakdown['volume']['details'] = f'Good volume ({volume_ratio:.2f}x average)'
                     score += 5
-                elif volume_ratio > 1.0:
+                elif volume_ratio > 0.7:  # Was 1.0x
                     breakdown['volume']['points'] = 3
                     breakdown['volume']['details'] = f'Above average volume ({volume_ratio:.2f}x)'
                     score += 3
-                elif volume_ratio > 0.8:
+                elif volume_ratio > 0.5:  # Was 0.8x
                     breakdown['volume']['points'] = 1
                     breakdown['volume']['details'] = f'Near average volume ({volume_ratio:.2f}x)'
                     score += 1
