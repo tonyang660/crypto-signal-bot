@@ -120,7 +120,7 @@ class SignalBot:
                     filled_orders = self.paper_engine.check_pending_orders()
                     for fill_data in filled_orders:
                         symbol = fill_data['symbol']
-                        signal = self.signal_tracker.get_signal(symbol)
+                        signal = self.signal_tracker.active_signals.get(symbol)
                         if signal:
                             # Update signal with fill information
                             self.signal_tracker.update_order_filled(symbol, fill_data)
@@ -135,7 +135,7 @@ class SignalBot:
                     
                     # Check exit conditions for open positions
                     for symbol in active_symbols:
-                        signal = self.signal_tracker.get_signal(symbol)
+                        signal = self.signal_tracker.active_signals.get(symbol)
                         if signal and signal.get('execution_state') == 'position_open':
                             # Get position from paper account
                             positions = [p for p in self.paper_account.get_open_positions() if p['symbol'] == symbol]

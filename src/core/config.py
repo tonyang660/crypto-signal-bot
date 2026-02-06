@@ -134,9 +134,13 @@ class Config:
     
     # ==================== FILE PATHS ====================
     DATA_DIR = 'data'
-    ACTIVE_SIGNALS_FILE = os.path.join(DATA_DIR, 'signals_active.json')
     
-    # Separate history files for paper trading vs signal-only mode
+    # Separate active and history files for paper trading vs signal-only mode
+    ACTIVE_SIGNALS_FILE = os.path.join(
+        DATA_DIR,
+        'signals_active_paper.json' if PAPER_TRADING_ENABLED else 'signals_active.json'
+    )
+    
     HISTORY_SIGNALS_FILE = os.path.join(
         DATA_DIR, 
         'signals_history_paper.json' if PAPER_TRADING_ENABLED else 'signals_history.json'

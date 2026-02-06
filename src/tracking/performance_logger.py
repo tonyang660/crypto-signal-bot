@@ -270,10 +270,8 @@ class PerformanceLogger:
     def _save_trades(self) -> None:
         """Save trades to file"""
         try:
-            # Use separate file for trade history
-            trades_file = Path(Config.DATA_DIR) / 'trade_history.json'
-            
-            with open(trades_file, 'w') as f:
+            # Save to mode-specific file
+            with open(self.trade_history_file, 'w') as f:
                 json.dump(self.trades, f, indent=2)
                 
         except Exception as e:
@@ -376,12 +374,11 @@ class PerformanceLogger:
     def _load_trades(self) -> None:
         """Load trades from file"""
         try:
-            trades_file = Path(Config.DATA_DIR) / 'trade_history.json'
-            
-            if trades_file.exists():
-                with open(trades_file, 'r') as f:
+            if self.trade_history_file.exists():
+                with open(self.trade_history_file, 'r') as f:
                     self.trades = json.load(f)
-                logger.info(f"✓ Loaded {len(self.trades)} historical trades")
+                mode = "📊 Paper" if Config.PAPER_TRADING_ENABLED else "📝 Signal"
+                logger.info(f"✓ {mode} mode: Loaded {len(self.trades)} historical trades")
         except Exception as e:
             logger.warning(f"Could not load trade history: {e}")
             self.trades = []

@@ -18,6 +18,7 @@ def backup_existing_files():
     backup_dir.mkdir(parents=True, exist_ok=True)
     
     files_to_backup = [
+        'signals_active.json',
         'signals_history.json',
         'trade_history.json',
         'performance.json'
@@ -49,11 +50,13 @@ def check_paper_trading_files():
     
     files = {
         'Signal-Only Mode': [
+            'signals_active.json',
             'signals_history.json',
             'trade_history.json',
             'performance.json'
         ],
         'Paper Trading Mode': [
+            'signals_active_paper.json',
             'signals_history_paper.json',
             'trade_history_paper.json',
             'paper_account.json'
@@ -75,8 +78,9 @@ def initialize_paper_trading_files():
     data_dir = Path('data')
     data_dir.mkdir(exist_ok=True)
     
-    # Initialize empty histories
+    # Initialize empty histories and active signals
     files_to_create = {
+        'signals_active_paper.json': {},
         'signals_history_paper.json': [],
         'trade_history_paper.json': []
     }
@@ -93,7 +97,7 @@ def initialize_paper_trading_files():
             print(f"⚠️  Already exists: {filename}")
     
     # paper_account.json will be created automatically by bot
-    print(f"\n✓ Paper trading history files ready")
+    print(f"\n✓ Paper trading files ready")
     print(f"ℹ️  paper_account.json will be created on first bot run")
     
     return created
@@ -125,9 +129,9 @@ def main():
 This utility helps you prepare for paper trading mode.
 
 IMPORTANT:
-- Paper trading uses separate history files
-- Old simulated signals stay in: signals_history.json
-- New paper trades go to: signals_history_paper.json
+- Paper trading uses completely separate files
+- Old simulated signals stay in: signals_active.json, signals_history.json
+- New paper trades go to: signals_active_paper.json, signals_history_paper.json
 - This prevents mixing simulated vs. realistic execution data
 
 """)
