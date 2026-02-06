@@ -449,7 +449,7 @@ class SignalTracker:
         # Normal full stop loss hit
         signal['stop_hit'] = True
         
-        # Calculate loss
+        # Calculate P&L of remaining position (can be negative, zero, or positive)
         entry_price = signal['entry_price']
         stop_price = signal['stop_loss']
         contracts = signal['position_size']['contracts']
@@ -459,21 +459,21 @@ class SignalTracker:
         remaining_contracts = contracts * (signal['remaining_percent'] / 100)
         
         if direction == 'long':
-            loss = (stop_price - entry_price) * remaining_contracts
+            remaining_pnl = (stop_price - entry_price) * remaining_contracts
         else:
-            loss = (entry_price - stop_price) * remaining_contracts
+            remaining_pnl = (entry_price - stop_price) * remaining_contracts
         
-        total_pnl = signal['realized_pnl'] + loss
+        total_pnl = signal['realized_pnl'] + remaining_pnl
         
         hit_info = {
             'type': 'stop_hit',
             'price': stop_price,  # Use actual SL price, not current market price (simulates real order execution)
-            'loss': loss,
+            'remaining_pnl': remaining_pnl,  # P&L from remaining position (can be negative, zero, or positive)
             'total_pnl': total_pnl,
             'signal': signal.copy()  # Include signal data before closing
         }
         
-        logger.warning(f"🛑 Stop loss hit for {symbol} | Loss: ${loss:.2f} | Total PnL: ${total_pnl:.2f}")
+        logger.warning(f"🛑 Stop loss hit for {symbol} | Remaining PnL: ${remaining_pnl:+.2f} | Total PnL: ${total_pnl:+.2f}")
         
         # Close signal
         self._close_signal(symbol, 'stopped')

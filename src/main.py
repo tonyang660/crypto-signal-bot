@@ -483,7 +483,7 @@ class SignalBot:
                         symbol=symbol,
                         direction=signal['direction'],
                         price=current_price,
-                        total_pnl=hit_info['total_pnl']
+                        total_pnl=hit_info['remaining_pnl']  # P&L from remaining position only
                     )
                     
                     # Calculate duration
@@ -497,13 +497,13 @@ class SignalBot:
                         direction=signal['direction'],
                         entry_price=signal['entry_price'],
                         exit_price=current_price,
-                        pnl=hit_info['total_pnl'],
+                        pnl=hit_info['remaining_pnl'],  # Only record P&L from remaining position (partial TPs already recorded)
                         exit_reason='stopped',
                         regime=signal.get('regime', 'unknown'),
                         score=signal.get('score', 0),
                         duration_hours=duration
                     )
-                    self.risk_manager.record_trade(hit_info['total_pnl'])
+                    self.risk_manager.record_trade(hit_info['remaining_pnl'])  # Only record remaining position P&L (partial TPs already recorded)
                 
                 elif hit_info['type'] == 'partial_protection_exit':
                     # Partial protection triggered - 50% exited at breakeven
