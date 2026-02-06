@@ -318,28 +318,27 @@ class RiskManager:
     def _load_state(self) -> None:
         """Load persisted state from file"""
         try:
-            # For paper trading, load equity from paper_account
-            if self.paper_trading_mode and self.paper_account:
-                self.equity = self.paper_account.get_equity()
-                logger.info(f"✓ Paper trading mode - Equity loaded from paper_account: ${self.equity:.2f}")
-                # Still load risk management state from performance.json if it exists
-                # (cooldowns, consecutive losses, etc.)
+            # Paper trading mode: Start fresh with clean state
+            if self.paper_trading_mode:
+                if self.paper_account:
+                    self.equity = self.paper_account.get_equity()
+                    logger.info(f"✓ Paper trading mode - Starting fresh with equity from paper_account: ${self.equity:.2f}")
+                # Don't load anything from performance.json - clean slate for paper trading
+                return
             
+            # Signal-only mode: Load from performance.json
             if Path(Config.PERFORMANCE_FILE).exists():
                 with open(Config.PERFORMANCE_FILE, 'r') as f:
                     state = json.load(f)
                 
-                # Load risk management state (always needed)
-                self.daily_pnl = state.get('daily_pnl', 0.0)  # Load daily PnL
+                # Load all risk management state
+                self.equity = state.get('equity', Config.INITIAL_CAPITAL)
+                self.daily_pnl = state.get('daily_pnl', 0.0)
                 self.daily_loss = state.get('daily_loss', 0.0)
                 self.weekly_loss = state.get('weekly_loss', 0.0)
-                self.weekly_pnl = state.get('weekly_pnl', 0.0)  # Load weekly PnL
+                self.weekly_pnl = state.get('weekly_pnl', 0.0)
                 self.consecutive_losses = state.get('consecutive_losses', 0)
                 self.trading_enabled = state.get('trading_enabled', True)
-                
-                # Only load equity from performance.json if NOT in paper trading mode
-                if not self.paper_trading_mode:
-                    self.equity = state.get('equity', Config.INITIAL_CAPITAL)
                 
                 cooldown_str = state.get('cooldown_until')
                 if cooldown_str:
@@ -357,8 +356,7 @@ class RiskManager:
                 if weekly_reset_str:
                     self.last_weekly_reset = datetime.fromisoformat(weekly_reset_str).date()
                 
-                if not self.paper_trading_mode:
-                    logger.info(f"✓ Risk manager state loaded - Equity: ${self.equity:.2f}")
+                logger.info(f"✓ Risk manager state loaded - Equity: ${self.equity:.2f}")
             
         except Exception as e:
             logger.warning(f"Could not load risk manager state: {e}")
