@@ -115,23 +115,104 @@ class SignalBot:
                 # In paper trading, paper engine handles all position monitoring
                 if active_symbols:
                     logger.info(f"📊 Paper Trading: Monitoring {len(active_symbols)} position(s): {', '.join(active_symbols)}")
+                
+                # Log pending orders status
+                pending_count = len(self.paper_engine.pending_orders)
+                if pending_count > 0:
+                    logger.info(f"⏳ Checking {pending_count} pending limit order(s) for fills...")
+                    for order_id, order in self.paper_engine.pending_orders.items():
+                        if order['status'] == 'pending':
+                            try:
+                                ticker = self.data_manager.client.get_ticker(order['symbol'])
+                                if order['side'] == 'long':
+                                    price_info = f"Ask: ${ticker['ask']:,.4f} | Limit: ${order['limit_price']:,.4f}"
+                                    will_fill = ticker['ask'] <= order['limit_price']
+                                else:  # short
+                                    price_info = f"Bid: ${ticker['bid']:,.4f} | Limit: ${order['limit_price']:,.4f}"
+                                    will_fill = ticker['bid'] >= order['limit_price']
+                                
+                                status = "✅ READY TO FILL" if will_fill else "⏳ Waiting"
+                                logger.info(f"   {order['symbol']} {order['side'].upper()}: {price_info} - {status}")
+                            except Exception as e:
+                                logger.warning(f"   {order['symbol']}: Could not check price - {e}")
+                
                 try:
                     # Check if any pending limit orders should fill
                     filled_orders = self.paper_engine.check_pending_orders()
+                    
+                    if filled_orders:
+                        logger.info(f"🎯 {len(filled_orders)} order(s) filled this scan!")
+                    elif pending_count > 0:
+                        logger.info(f"⏳ No fills yet - orders still waiting for target price")
+                    
                     for fill_data in filled_orders:
                         symbol = fill_data['symbol']
+                        
+                        # Get signal creation data from fill
+                        signal_creation_data = fill_data.get('signal_creation_data')
+                        if not signal_creation_data:
+                            logger.error(f"No signal creation data for filled order {symbol}")
+                            continue
+                        
+                        # NOW create the signal (only after fill)
+                        execution_data = {
+                            'entry_order_id': fill_data['order_id'],
+                            'liquidation_price': None,  # Will be calculated by margin_calculator
+                            'margin_used': signal_creation_data['position_size'].get('margin_used', 0)
+                        }
+                        
+                        signal_id = self.signal_tracker.create_signal(
+                            symbol=signal_creation_data['symbol'],
+                            direction=signal_creation_data['direction'],
+                            entry_price=fill_data['fill_price'],  # Use actual fill price
+                            stop_loss=signal_creation_data['stop_loss'],
+                            take_profits=signal_creation_data['take_profits'],
+                            position_size=signal_creation_data['position_size'],
+                            score=signal_creation_data['score'],
+                            entry_reason=signal_creation_data['entry_reason'],
+                            regime=signal_creation_data['regime'],
+                            atr=signal_creation_data['atr'],
+                            execution_data=execution_data
+                        )
+                        
+                        if not signal_id:
+                            logger.error(f"Failed to create signal for {symbol} after fill")
+                            continue
+                        
+                        # Get the created signal
                         signal = self.signal_tracker.active_signals.get(symbol)
-                        if signal:
-                            # Update signal with fill information
-                            self.signal_tracker.update_order_filled(symbol, fill_data)
-                            
-                            # Create position and place SL/TP orders
-                            position = self.paper_engine.add_position(fill_data, signal)
-                            
-                            # Send Discord notification
-                            self.discord.send_order_filled(symbol, fill_data)
-                            
-                            logger.success(f"✅ Position opened: {symbol} @ ${fill_data['fill_price']:,.2f}")
+                        if not signal:
+                            logger.error(f"Signal not found after creation for {symbol}")
+                            continue
+                        
+                        # Update with fill details
+                        signal['filled_at'] = fill_data['filled_at']
+                        signal['fill_price'] = fill_data['fill_price']
+                        signal['fees_paid'] = fill_data['fee']
+                        signal['entry_slippage'] = fill_data['slippage']
+                        signal['execution_state'] = 'filled'
+                        self.signal_tracker._save_active_signals()
+                        
+                        # Create position and place SL/TP orders
+                        position = self.paper_engine.add_position(fill_data, signal)
+                        
+                        # Update execution state to position_open
+                        signal['execution_state'] = 'position_open'
+                        self.signal_tracker._save_active_signals()
+                        
+                        # Send Discord notification for new signal (now filled)
+                        self.discord.send_new_signal(
+                            symbol=symbol,
+                            direction=signal['direction'],
+                            entry_price=fill_data['fill_price'],
+                            stop_loss=signal['stop_loss'],
+                            take_profits=signal['take_profits'],
+                            position_size=signal['position_size'],
+                            score=signal['score'],
+                            reason=signal['entry_reason']
+                        )
+                        
+                        logger.success(f"✅ Signal created & position opened: {symbol} @ ${fill_data['fill_price']:,.2f}")
                     
                     # Check exit conditions for open positions
                     for symbol in active_symbols:
@@ -213,6 +294,16 @@ class SignalBot:
                     if symbol in active_symbols:
                         logger.debug(f"{symbol}: Active signal already being monitored")
                         continue
+                    
+                    # Paper trading: Also skip if pending order exists
+                    if self.paper_trading_enabled and self.paper_engine:
+                        has_pending_order = any(
+                            order['symbol'] == symbol and order['status'] == 'pending'
+                            for order in self.paper_engine.pending_orders.values()
+                        )
+                        if has_pending_order:
+                            logger.debug(f"{symbol}: Pending limit order already exists")
+                            continue
                     
                     # Check if new signal can be created
                     can_create, reason = self.signal_tracker.can_create_signal(symbol)
@@ -442,7 +533,53 @@ class SignalBot:
                 logger.warning(f"{symbol}: Position size validation failed")
                 return
             
-            # Create signal
+            # Paper trading: Place order ONLY (signal created after fill)
+            if self.paper_trading_enabled and self.paper_engine:
+                try:
+                    # Generate signal ID
+                    signal_id = f"{symbol}_{direction}_{int(datetime.now().timestamp())}"
+                    
+                    # Prepare complete signal data for order
+                    signal_data = {
+                        'signal_id': signal_id,
+                        'symbol': symbol,
+                        'direction': direction,
+                        'entry_price': current_price,
+                        'stop_loss': stop_loss,
+                        'take_profits': take_profits,
+                        'position_size': position_size,
+                        'score': score,
+                        'entry_reason': entry_reason,
+                        'regime': regime,
+                        'atr': entry_atr
+                    }
+                    
+                    # Place limit order (signal will be created on fill)
+                    order_id = self.paper_engine.place_limit_order(signal_data)
+                    
+                    logger.success(f"📊 Paper Trading: Limit order {order_id} placed for {symbol} | "
+                                 f"Signal will be created on fill | Score: {score}")
+                    
+                    # Send Discord notification for order placement
+                    self.discord.send_status_update(
+                        f"📝 **Limit Order Placed - {symbol}**\n\n"
+                        f"Direction: {direction.upper()}\n"
+                        f"Entry Price: ${current_price:.4f}\n"
+                        f"Size: ${position_size['notional_usd']:.2f}\n"
+                        f"Leverage: {position_size['leverage']:.1f}×\n"
+                        f"Score: {score}/100\n\n"
+                        f"⏱️ Order will fill when price reaches entry level"
+                    )
+                    
+                    return  # Done - signal will be created on fill
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error placing paper trading order for {symbol}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return
+            
+            # Signal-only mode: Create signal immediately (old behavior)
             signal_id = self.signal_tracker.create_signal(
                 symbol=symbol,
                 direction=direction,
@@ -457,45 +594,7 @@ class SignalBot:
             )
             
             if signal_id:
-                # Paper trading: Place limit order BEFORE signal becomes visible
-                if self.paper_trading_enabled and self.paper_engine:
-                    try:
-                        # Create signal dict for paper engine
-                        signal_data = {
-                            'signal_id': signal_id,
-                            'symbol': symbol,
-                            'direction': direction,
-                            'entry_price': current_price,
-                            'stop_loss': stop_loss,
-                            'take_profits': take_profits,
-                            'position_size': position_size
-                        }
-                        
-                        # Place limit order
-                        order_id = self.paper_engine.place_limit_order(signal_data)
-                        
-                        # Update signal with execution tracking
-                        signal = self.signal_tracker.active_signals.get(symbol)
-                        if signal:
-                            signal['entry_order_id'] = order_id
-                            signal['liquidation_price'] = None  # Will be calculated on fill
-                            signal['margin_used'] = position_size.get('margin_used', 0)
-                            signal['paper_trading'] = True
-                            signal['execution_state'] = 'pending_entry'
-                            self.signal_tracker._save_active_signals()
-                        
-                        logger.info(f"📊 Paper Trading: Limit order {order_id} placed for {symbol}")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Error placing paper trading order for {symbol}: {e}")
-                        # Remove the signal since order placement failed
-                        if symbol in self.signal_tracker.active_signals:
-                            del self.signal_tracker.active_signals[symbol]
-                            self.signal_tracker._save_active_signals()
-                            logger.warning(f"🗑️ Removed {symbol} signal due to order placement failure")
-                        return  # Don't send Discord notification if order failed
-                
-                # Send Discord notification
+                # Send Discord notification (signal-only mode)
                 self.discord.send_new_signal(
                     symbol=symbol,
                     direction=direction,

@@ -50,7 +50,9 @@ class PaperTradingEngine:
         Place a virtual limit order for signal entry
         
         Args:
-            signal: Signal dict with entry_price, direction, position_size, etc.
+            signal: Signal dict with ALL signal creation parameters
+                   (entry_price, direction, position_size, stop_loss, take_profits, 
+                    score, entry_reason, regime, atr, etc.)
             
         Returns:
             order_id: Unique identifier for tracking order
@@ -69,7 +71,9 @@ class PaperTradingEngine:
             'status': 'pending',
             'placed_at': datetime.utcnow().isoformat(),
             'fill_attempts': 0,
-            'max_attempts': 6  # 30 minutes at 5-min scans
+            'max_attempts': 6,  # 30 minutes at 5-min scans
+            # Store complete signal data for creation after fill
+            'signal_creation_data': signal
         }
         
         self.pending_orders[order_id] = order
@@ -185,7 +189,9 @@ class PaperTradingEngine:
                         'fee_rate': fee_rate,
                         'fee_type': fee_type,
                         'slippage': 0.0,  # Limit filled at exact price
-                        'filled_at': datetime.utcnow().isoformat()
+                        'filled_at': datetime.utcnow().isoformat(),
+                        # Include signal creation data for creating signal after fill
+                        'signal_creation_data': order.get('signal_creation_data')
                     }
                     
                     filled_orders.append(fill_data)
