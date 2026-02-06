@@ -10,6 +10,13 @@ class PerformanceLogger:
     
     def __init__(self):
         self.trades: List[Dict] = []
+        
+        # Use separate trade history file for paper trading
+        self.trade_history_file = Path(Config.DATA_DIR) / (
+            'trade_history_paper.json' if Config.PAPER_TRADING_ENABLED 
+            else 'trade_history.json'
+        )
+        
         self._load_trades()
     
     def log_trade(
@@ -47,7 +54,8 @@ class PerformanceLogger:
             self.trades.append(trade)
             self._save_trades()
             
-            logger.info(f"📊 Trade logged: {symbol} {direction} | PnL: ${pnl:.2f}")
+            mode = "📊 Paper" if Config.PAPER_TRADING_ENABLED else "📝 Signal"
+            logger.info(f"{mode} trade logged: {symbol} {direction} | PnL: ${pnl:.2f}")
             
         except Exception as e:
             logger.error(f"Error logging trade: {e}")

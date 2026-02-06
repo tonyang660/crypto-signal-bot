@@ -1,0 +1,12 @@
+{
+  "daily_pnl": -89.28060660000001,
+  "equity": 2159.600480039715,
+  "daily_loss": -89.28060660000001,
+  "weekly_loss": -89.28060660000001,
+  "consecutive_losses": 3,
+  "trading_enabled": true,
+  "cooldown_until": "2026-02-02T20:33:52.981143",
+  "last_reset_date": "2026-02-02",
+  "last_weekly_reset": "2026-02-02",
+  "last_updated": "2026-02-02T16:33:52.981277"
+}

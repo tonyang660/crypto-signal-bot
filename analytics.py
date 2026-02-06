@@ -18,7 +18,13 @@ logger.add(sys.stdout, level="INFO", format="<level>{message}</level>")
 
 # File paths
 DATA_DIR = Path('data')
-TRADE_HISTORY_FILE = DATA_DIR / 'trade_history.json'
+
+# Detect mode from paper_account existence
+PAPER_MODE = (DATA_DIR / 'paper_account.json').exists()
+
+TRADE_HISTORY_FILE = DATA_DIR / ('trade_history_paper.json' if PAPER_MODE else 'trade_history.json')
+PAPER_ACCOUNT_FILE = DATA_DIR / 'paper_account.json'
+SIGNALS_HISTORY_FILE = DATA_DIR / ('signals_history_paper.json' if PAPER_MODE else 'signals_history.json')
 
 class PerformanceAnalytics:
     """Analyze trading performance by regime, time, symbol, etc."""
@@ -206,10 +212,123 @@ class PerformanceAnalytics:
             print(f"   Avg Duration: {avg_duration:.1f} hours")
             print()
     
+    def analyze_paper_trading(self):
+        """Analyze paper trading performance with execution costs"""
+        print("\n" + "="*80)
+        print("📊 PAPER TRADING PERFORMANCE")
+        print("="*80 + "\n")
+        
+        # Load paper account data
+        try:
+            if PAPER_ACCOUNT_FILE.exists():
+                with open(PAPER_ACCOUNT_FILE, 'r') as f:
+                    account = json.load(f)
+            else:
+                print("⚠️  Paper trading account not found. Enable paper trading to see stats.\n")
+                return
+        except Exception as e:
+            logger.error(f"Error loading paper account: {e}")
+            return
+        
+        # Load signal history for paper trading specific data
+        paper_signals = []
+        try:
+            if SIGNALS_HISTORY_FILE.exists():
+                with open(SIGNALS_HISTORY_FILE, 'r') as f:
+                    all_signals = json.load(f)
+                    # Filter for paper trading signals
+                    paper_signals = [s for s in all_signals if s.get('paper_trading', False)]
+        except Exception as e:
+            logger.error(f"Error loading signals history: {e}")
+        
+        # Account summary
+        initial = account.get('initial_capital', 0)
+        balance = account.get('balance', 0)
+        total_pnl = account.get('total_realized_pnl', 0)
+        fees_paid = account.get('total_fees_paid', 0)
+        funding_costs = account.get('total_funding_costs', 0)
+        trades_count = account.get('trades_count', 0)
+        
+        total_return = ((balance - initial) / initial * 100) if initial > 0 else 0
+        net_pnl = total_pnl - fees_paid - funding_costs
+        
+        print("💰 ACCOUNT SUMMARY")
+        print("-" * 40)
+        print(f"Initial Capital:        ${initial:,.2f}")
+        print(f"Current Balance:        ${balance:,.2f}")
+        print(f"Total Return:           ${balance - initial:+,.2f} ({total_return:+.2f}%)")
+        print()
+        
+        print("📈 P&L BREAKDOWN")
+        print("-" * 40)
+        print(f"Gross P&L:              ${total_pnl:+,.2f}")
+        print(f"Trading Fees:           -${fees_paid:,.2f}")
+        print(f"Funding Costs:          -${funding_costs:,.2f}")
+        print(f"Net P&L:                ${net_pnl:+,.2f}")
+        print()
+        
+        if trades_count > 0:
+            avg_pnl = net_pnl / trades_count
+            avg_fees = fees_paid / trades_count
+            fee_impact_pct = (fees_paid / abs(total_pnl) * 100) if total_pnl != 0 else 0
+            
+            print("💸 COST ANALYSIS")
+            print("-" * 40)
+            print(f"Total Trades:           {trades_count}")
+            print(f"Avg P&L per Trade:      ${avg_pnl:+,.2f}")
+            print(f"Avg Fee per Trade:      ${avg_fees:.2f}")
+            print(f"Fee Impact on P&L:      {fee_impact_pct:.1f}%")
+            print()
+        
+        # Slippage analysis from paper trading signals
+        if paper_signals:
+            slippages = [s.get('entry_slippage', 0) for s in paper_signals if 'entry_slippage' in s]
+            if slippages:
+                avg_slippage = sum(slippages) / len(slippages) * 100
+                max_slippage = max(slippages) * 100
+                
+                print("📉 EXECUTION QUALITY")
+                print("-" * 40)
+                print(f"Signals with Execution: {len(slippages)}")
+                print(f"Avg Entry Slippage:     {avg_slippage:.3f}%")
+                print(f"Max Entry Slippage:     {max_slippage:.3f}%")
+                print()
+        
+        # Equity curve overview
+        equity_curve = account.get('equity_curve', [])
+        if len(equity_curve) > 1:
+            peak_equity = max(e.get('equity', 0) for e in equity_curve)
+            current_equity = equity_curve[-1].get('equity', 0)
+            drawdown = ((peak_equity - current_equity) / peak_equity * 100) if peak_equity > 0 else 0
+            
+            print("📊 EQUITY CURVE")
+            print("-" * 40)
+            print(f"Peak Equity:            ${peak_equity:,.2f}")
+            print(f"Current Equity:         ${current_equity:,.2f}")
+            print(f"Drawdown from Peak:     {drawdown:.2f}%")
+            print(f"Total Snapshots:        {len(equity_curve)}")
+            print()
+        
+        # Compare simulated vs execution-adjusted performance
+        if paper_signals and trades_count > 0:
+            # Calculate what P&L would have been without fees/slippage
+            theoretical_pnl = total_pnl + fees_paid + funding_costs
+            execution_cost = fees_paid + funding_costs
+            
+            print("🔬 SIMULATION VS REALITY")
+            print("-" * 40)
+            print(f"Theoretical P&L:        ${theoretical_pnl:+,.2f} (no costs)")
+            print(f"Execution Costs:        -${execution_cost:,.2f}")
+            print(f"Actual P&L:             ${total_pnl:+,.2f}")
+            print(f"Cost Impact:            {(execution_cost/abs(theoretical_pnl)*100):.1f}% of gross P&L")
+            print()
+    
     def generate_summary(self):
         """Generate overall summary"""
         if not self.trades:
             print("\n⚠️  No trade data available for analysis\n")
+            # Still show paper trading stats if available
+            self.analyze_paper_trading()
             return
         
         print("\n" + "="*80)
@@ -233,6 +352,9 @@ class PerformanceAnalytics:
         self.analyze_by_symbol()
         self.analyze_by_exit_reason()
         self.analyze_by_hour()
+        
+        # Paper trading specific analysis
+        self.analyze_paper_trading()
         
         print("="*80 + "\n")
 

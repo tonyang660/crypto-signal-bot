@@ -107,13 +107,15 @@ class SignalTracker:
         score: int,
         entry_reason: str,
         regime: str = 'unknown',
-        atr: float = 0.0
+        atr: float = 0.0,
+        execution_data: Optional[Dict] = None
     ) -> str:
         """
         Create new signal
         
         Args:
             regime: Market regime at entry (for analytics)
+            execution_data: Optional dict with paper trading execution details
         
         Returns:
             Signal ID
@@ -147,7 +149,22 @@ class SignalTracker:
                 'entry_atr': atr,  # Store entry ATR for adaptive stop comparison
                 'entry_regime': regime,  # Store entry regime for change detection
                 'adaptive_stop_triggered': False,  # Track if adaptive protection activated
-                'partial_protection_active': False  # Track if 50% protected at breakeven, 50% running
+                'partial_protection_active': False,  # Track if 50% protected at breakeven, 50% running
+                # Paper trading execution fields
+                'paper_trading': execution_data is not None,
+                'execution_state': 'pending_entry' if execution_data else 'simulated',
+                'entry_order_id': execution_data.get('entry_order_id') if execution_data else None,
+                'order_placed_at': datetime.now().isoformat() if execution_data else None,
+                'filled_at': None,
+                'fill_price': None,
+                'entry_slippage': 0.0,
+                'fees_paid': 0.0,
+                'funding_costs': 0.0,
+                'sl_order_id': None,
+                'tp_order_ids': {},
+                'liquidation_price': execution_data.get('liquidation_price') if execution_data else None,
+                'margin_used': execution_data.get('margin_used') if execution_data else 0.0,
+                'last_funding_time': datetime.now().isoformat() if execution_data else None
             }
             
             # Add to active signals
@@ -156,7 +173,8 @@ class SignalTracker:
             # Save to file
             self._save_active_signals()
             
-            logger.info(f"✅ Signal created: {signal_id}")
+            mode = "📊 Paper" if execution_data else "📝 Signal"
+            logger.info(f"✅ {mode} created: {signal_id}")
             
             return signal_id
             
@@ -702,3 +720,92 @@ class SignalTracker:
         except Exception as e:
             logger.warning(f"Could not load signal history: {e}")
             self.history = []
+    
+    # ==================== PAPER TRADING EXECUTION STATE ====================
+    
+    def update_order_filled(self, symbol: str, fill_data: Dict) -> bool:
+        """
+        Update signal with order fill information
+        
+        Args:
+            symbol: Trading pair symbol
+            fill_data: Dict with fill details (fill_price, fee, slippage, etc.)
+            
+        Returns:
+            success: True if updated, False if signal not found
+        """
+        if symbol not in self.active_signals:
+            logger.error(f"Cannot update fill for {symbol}: signal not found")
+            return False
+        
+        signal = self.active_signals[symbol]
+        
+        signal['execution_state'] = 'position_open'
+        signal['filled_at'] = fill_data.get('filled_at', datetime.now().isoformat())
+        signal['fill_price'] = fill_data.get('fill_price', signal['entry_price'])
+        signal['entry_slippage'] = fill_data.get('slippage', 0.0)
+        signal['fees_paid'] = fill_data.get('fee', 0.0)
+        signal['liquidation_price'] = fill_data.get('liquidation_price')
+        signal['margin_used'] = fill_data.get('margin_used', 0.0)
+        
+        # Store SL/TP order IDs if provided
+        if 'sl_order_id' in fill_data:
+            signal['sl_order_id'] = fill_data['sl_order_id']
+        if 'tp_order_ids' in fill_data:
+            signal['tp_order_ids'] = fill_data['tp_order_ids']
+        
+        self._save_active_signals()
+        
+        logger.info(f"📝 Order filled: {symbol} @ ${signal['fill_price']:,.2f} | "
+                   f"Slippage: {signal['entry_slippage']*100:.3f}% | Fee: ${signal['fees_paid']:.2f}")
+        
+        return True
+    
+    def update_fees_paid(self, symbol: str, fee_amount: float) -> bool:
+        """Add additional fees to signal tracking"""
+        if symbol not in self.active_signals:
+            return False
+        
+        signal = self.active_signals[symbol]
+        signal['fees_paid'] = signal.get('fees_paid', 0.0) + fee_amount
+        self._save_active_signals()
+        
+        return True
+    
+    def update_funding_cost(self, symbol: str, funding_cost: float) -> bool:
+        """Add funding cost to signal tracking"""
+        if symbol not in self.active_signals:
+            return False
+        
+        signal = self.active_signals[symbol]
+        signal['funding_costs'] = signal.get('funding_costs', 0.0) + funding_cost
+        signal['last_funding_time'] = datetime.now().isoformat()
+        self._save_active_signals()
+        
+        return True
+    
+    def update_execution_state(self, symbol: str, state: str) -> bool:
+        """
+        Update execution state
+        
+        States: pending_entry, position_open, partially_closed, fully_closed
+        """
+        if symbol not in self.active_signals:
+            return False
+        
+        signal = self.active_signals[symbol]
+        signal['execution_state'] = state
+        self._save_active_signals()
+        
+        return True
+    
+    def get_paper_trading_signals(self) -> List[Dict]:
+        """Get all signals with paper trading execution"""
+        return [s for s in self.active_signals.values() if s.get('paper_trading', False)]
+    
+    def get_pending_entry_orders(self) -> List[Dict]:
+        """Get signals waiting for entry order to fill"""
+        return [
+            s for s in self.active_signals.values() 
+            if s.get('execution_state') == 'pending_entry'
+        ]

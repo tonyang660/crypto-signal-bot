@@ -1,0 +1,782 @@
+[
+  {
+    "signal_id": "ADAUSDT_short_1769827086",
+    "symbol": "ADAUSDT",
+    "direction": "short",
+    "entry_price": 0.319,
+    "stop_loss": 0.32,
+    "take_profits": {
+      "tp1": {
+        "price": 0.32,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 0.32,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 0.32,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 18808.777429,
+      "notional_usd": 6000.0,
+      "leverage": 3.0,
+      "risk_usd": 20.0,
+      "stop_distance_pct": 0.31,
+      "stop_distance_usd": 18.81
+    },
+    "score": 80,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-01-31T02:38:06.026903",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 0.3201,
+    "closed_at": "2026-01-31T02:42:22.669451"
+  },
+  {
+    "signal_id": "PEPEUSDT_short_1769833480",
+    "symbol": "PEPEUSDT",
+    "direction": "short",
+    "entry_price": 4.5863e-06,
+    "stop_loss": 4.62e-06,
+    "take_profits": {
+      "tp1": {
+        "price": 4.54e-06,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 4.5e-06,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 4.47e-06,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 593471810.089017,
+      "notional_usd": 2721.84,
+      "leverage": 11.0,
+      "risk_usd": 20.0,
+      "margin_used": 247.44,
+      "margin_percent": 12.37,
+      "stop_distance_pct": 0.73,
+      "stop_distance_usd": 20.0
+    },
+    "score": 88,
+    "entry_reason": "High score override (80+): Not a bearish candle",
+    "status": "completed",
+    "created_at": "2026-01-31T04:24:40.197868",
+    "tp1_hit": true,
+    "tp2_hit": true,
+    "tp3_hit": true,
+    "stop_hit": false,
+    "remaining_percent": 0,
+    "realized_pnl": 56.498516320474195,
+    "current_price": 4.4699e-06,
+    "closed_at": "2026-01-31T06:42:41.727635"
+  },
+  {
+    "signal_id": "ETHUSDT_short_1769831237",
+    "symbol": "ETHUSDT",
+    "direction": "short",
+    "entry_price": 2695.24,
+    "stop_loss": 2712.1,
+    "take_profits": {
+      "tp1": {
+        "price": 2669.95,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 2653.09,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 2636.23,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 1.18624,
+      "notional_usd": 3197.2,
+      "leverage": 11.0,
+      "risk_usd": 20.0,
+      "margin_used": 290.65,
+      "margin_percent": 14.53,
+      "stop_distance_pct": 0.63,
+      "stop_distance_usd": 20.0
+    },
+    "score": 87,
+    "entry_reason": "All short entry conditions met",
+    "status": "completed",
+    "created_at": "2026-01-31T03:47:17.641465",
+    "tp1_hit": true,
+    "tp2_hit": true,
+    "tp3_hit": true,
+    "stop_hit": false,
+    "remaining_percent": 0,
+    "realized_pnl": 52.16134527999997,
+    "current_price": 2629.41,
+    "closed_at": "2026-01-31T08:42:17.507954"
+  },
+  {
+    "signal_id": "ADAUSDT_short_1769832443",
+    "symbol": "ADAUSDT",
+    "direction": "short",
+    "entry_price": 0.3184,
+    "stop_loss": 0.32,
+    "take_profits": {
+      "tp1": {
+        "price": 0.32,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 0.31,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 0.31,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 12500.0,
+      "notional_usd": 3980.0,
+      "leverage": 11.0,
+      "risk_usd": 20.0,
+      "margin_used": 361.82,
+      "margin_percent": 18.09,
+      "stop_distance_pct": 0.5,
+      "stop_distance_usd": 20.0
+    },
+    "score": 80,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "completed",
+    "created_at": "2026-01-31T04:07:23.961718",
+    "tp1_hit": true,
+    "tp2_hit": true,
+    "tp3_hit": true,
+    "stop_hit": false,
+    "remaining_percent": 0,
+    "realized_pnl": 60.75000000000011,
+    "current_price": 0.3089,
+    "closed_at": "2026-01-31T08:42:19.410618"
+  },
+  {
+    "signal_id": "XRPUSDT_short_1769848938",
+    "symbol": "XRPUSDT",
+    "direction": "short",
+    "entry_price": 1.6869,
+    "stop_loss": 1.7008,
+    "take_profits": {
+      "tp1": {
+        "price": 1.666,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 1.6522,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 1.6382,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 1557.541653,
+      "notional_usd": 2627.42,
+      "leverage": 11.0,
+      "risk_usd": 21.65,
+      "margin_used": 238.86,
+      "margin_percent": 11.03,
+      "stop_distance_pct": 0.82,
+      "stop_distance_usd": 21.65
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-01-31T08:42:18.948445",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 1.7043,
+    "closed_at": "2026-01-31T09:32:26.938840"
+  },
+  {
+    "signal_id": "DOGEUSDT_short_1769848940",
+    "symbol": "DOGEUSDT",
+    "direction": "short",
+    "entry_price": 0.11115,
+    "stop_loss": 0.11207,
+    "take_profits": {
+      "tp1": {
+        "price": 0.10977,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 0.10885,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 0.10793,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 23790.57497,
+      "notional_usd": 2644.32,
+      "leverage": 11.0,
+      "risk_usd": 21.89,
+      "margin_used": 240.39,
+      "margin_percent": 10.98,
+      "stop_distance_pct": 0.83,
+      "stop_distance_usd": 21.89
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-01-31T08:42:20.339589",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 0.1123,
+    "closed_at": "2026-01-31T09:32:29.143062"
+  },
+  {
+    "signal_id": "SUIUSDT_short_1769845952",
+    "symbol": "SUIUSDT",
+    "direction": "short",
+    "entry_price": 1.2361,
+    "stop_loss": 1.2461,
+    "take_profits": {
+      "tp1": {
+        "price": 1.2211,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 1.2111,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 1.2011,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 2056.498516,
+      "notional_usd": 2542.04,
+      "leverage": 11.0,
+      "risk_usd": 20.56,
+      "margin_used": 231.09,
+      "margin_percent": 11.24,
+      "stop_distance_pct": 0.81,
+      "stop_distance_usd": 20.56
+    },
+    "score": 80,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "completed",
+    "created_at": "2026-01-31T07:52:32.040016",
+    "tp1_hit": true,
+    "tp2_hit": true,
+    "tp3_hit": true,
+    "stop_hit": false,
+    "remaining_percent": 0,
+    "realized_pnl": 78.45541838540008,
+    "current_price": 1.1747,
+    "closed_at": "2026-01-31T15:37:23.638689"
+  },
+  {
+    "signal_id": "XMRUSDT_short_1769922454",
+    "symbol": "XMRUSDT",
+    "direction": "short",
+    "entry_price": 431.07,
+    "stop_loss": 439.82,
+    "take_profits": {
+      "tp1": {
+        "price": 417.94,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 409.2,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 400.44,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 2.540451,
+      "notional_usd": 1095.11,
+      "leverage": 7.0,
+      "risk_usd": 22.23,
+      "margin_used": 156.44,
+      "margin_percent": 7.04,
+      "stop_distance_pct": 2.03,
+      "stop_distance_usd": 22.23
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-01T05:07:34.630265",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 439.98,
+    "closed_at": "2026-02-01T06:17:17.454464"
+  },
+  {
+    "signal_id": "HYPEUSDT_long_1769902641",
+    "symbol": "HYPEUSDT",
+    "direction": "long",
+    "entry_price": 30.992,
+    "stop_loss": 30.233,
+    "take_profits": {
+      "tp1": {
+        "price": 32.13,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 32.89,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 33.648,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 29.034297,
+      "notional_usd": 899.83,
+      "leverage": 7.0,
+      "risk_usd": 22.04,
+      "margin_used": 128.55,
+      "margin_percent": 5.83,
+      "stop_distance_pct": 2.45,
+      "stop_distance_usd": 22.04
+    },
+    "score": 80,
+    "entry_reason": "High score override (80+): Primary trend is neutral",
+    "status": "stopped",
+    "created_at": "2026-01-31T23:37:21.719832",
+    "tp1_hit": true,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 50,
+    "realized_pnl": 19.191670316999986,
+    "current_price": 29.962,
+    "closed_at": "2026-02-01T13:27:39.009497"
+  },
+  {
+    "signal_id": "XRPUSDT_short_1769916746",
+    "symbol": "XRPUSDT",
+    "direction": "short",
+    "entry_price": 1.6611,
+    "stop_loss": 1.6611,
+    "take_profits": {
+      "tp1": {
+        "price": 1.6296,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 1.6086,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 1.5876,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 1058.52133,
+      "notional_usd": 1758.31,
+      "leverage": 9.0,
+      "risk_usd": 22.23,
+      "margin_used": 195.37,
+      "margin_percent": 8.79,
+      "stop_distance_pct": 1.26,
+      "stop_distance_usd": 22.23
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Primary trend is neutral",
+    "status": "completed",
+    "created_at": "2026-02-01T03:32:26.595287",
+    "tp1_hit": true,
+    "tp2_hit": true,
+    "tp3_hit": true,
+    "stop_hit": false,
+    "remaining_percent": 0,
+    "realized_pnl": 54.619700628000004,
+    "current_price": 1.5821,
+    "closed_at": "2026-02-01T15:27:16.973855"
+  },
+  {
+    "signal_id": "BNBUSDT_short_1769956345",
+    "symbol": "BNBUSDT",
+    "direction": "short",
+    "entry_price": 756.76,
+    "stop_loss": 759.8299999999999,
+    "take_profits": {
+      "tp1": {
+        "price": 747.55,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 741.41,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 735.27,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 3.627369,
+      "notional_usd": 2745.05,
+      "leverage": 11.0,
+      "risk_usd": 22.27,
+      "margin_used": 249.55,
+      "margin_percent": 11.2,
+      "stop_distance_pct": 0.81,
+      "stop_distance_usd": 22.27
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-01T14:32:25.342413",
+    "tp1_hit": true,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 50,
+    "realized_pnl": 18.136845,
+    "current_price": 762.29,
+    "closed_at": "2026-02-01T18:07:41.401756"
+  },
+  {
+    "signal_id": "XMRUSDT_short_1769961746",
+    "symbol": "XMRUSDT",
+    "direction": "short",
+    "entry_price": 421.76,
+    "stop_loss": 430.08,
+    "take_profits": {
+      "tp1": {
+        "price": 409.28,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 400.96,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 392.64,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 2.742302,
+      "notional_usd": 1156.59,
+      "leverage": 7.0,
+      "risk_usd": 22.82,
+      "margin_used": 165.23,
+      "margin_percent": 7.24,
+      "stop_distance_pct": 1.97,
+      "stop_distance_usd": 22.82
+    },
+    "score": 80,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-01T16:02:26.894226",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 431.37,
+    "closed_at": "2026-02-01T18:17:57.061897"
+  },
+  {
+    "signal_id": "XLMUSDT_short_1769959045",
+    "symbol": "XLMUSDT",
+    "direction": "short",
+    "entry_price": 0.17406,
+    "stop_loss": 0.176,
+    "take_profits": {
+      "tp1": {
+        "price": 0.17115,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 0.16921,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 0.16727,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 11581.103424,
+      "notional_usd": 2015.81,
+      "leverage": 9.0,
+      "risk_usd": 22.47,
+      "margin_used": 223.98,
+      "margin_percent": 9.97,
+      "stop_distance_pct": 1.11,
+      "stop_distance_usd": 22.47
+    },
+    "score": 80,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-01T15:17:25.210690",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 0.17623,
+    "closed_at": "2026-02-01T18:23:03.548100"
+  },
+  {
+    "signal_id": "XMRUSDT_short_1769987849",
+    "symbol": "XMRUSDT",
+    "direction": "short",
+    "entry_price": 408.32,
+    "stop_loss": 417.25,
+    "take_profits": {
+      "tp1": {
+        "price": 394.92,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 386.0,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 377.06,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 2.518344,
+      "notional_usd": 1028.29,
+      "leverage": 7.0,
+      "risk_usd": 22.49,
+      "margin_used": 146.9,
+      "margin_percent": 6.53,
+      "stop_distance_pct": 2.19,
+      "stop_distance_usd": 22.49
+    },
+    "score": 80,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-01T23:17:29.655813",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 419.86,
+    "closed_at": "2026-02-02T00:27:39.923198"
+  },
+  {
+    "signal_id": "BNBUSDT_short_1770010043",
+    "symbol": "BNBUSDT",
+    "direction": "short",
+    "entry_price": 737.99,
+    "stop_loss": 751.22,
+    "take_profits": {
+      "tp1": {
+        "price": 718.14,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 704.92,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 691.68,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 1.682836,
+      "notional_usd": 1241.92,
+      "leverage": 7.0,
+      "risk_usd": 22.26,
+      "margin_used": 177.42,
+      "margin_percent": 7.97,
+      "stop_distance_pct": 1.79,
+      "stop_distance_usd": 22.26
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-02T05:27:23.864631",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 751.93,
+    "closed_at": "2026-02-02T07:07:14.563646"
+  },
+  {
+    "signal_id": "XMRUSDT_short_1770009788",
+    "symbol": "XMRUSDT",
+    "direction": "short",
+    "entry_price": 397.37,
+    "stop_loss": 406.07,
+    "take_profits": {
+      "tp1": {
+        "price": 384.32,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 375.62,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 366.92,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 2.559072,
+      "notional_usd": 1016.9,
+      "leverage": 7.0,
+      "risk_usd": 22.26,
+      "margin_used": 145.27,
+      "margin_percent": 6.52,
+      "stop_distance_pct": 2.19,
+      "stop_distance_usd": 22.26
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-02T05:23:08.783175",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 408.08,
+    "closed_at": "2026-02-02T16:33:52.059096"
+  },
+  {
+    "signal_id": "ETHUSDT_short_1770010956",
+    "symbol": "ETHUSDT",
+    "direction": "short",
+    "entry_price": 2201.56,
+    "stop_loss": 2252.56,
+    "take_profits": {
+      "tp1": {
+        "price": 2125.06,
+        "close_percent": 50,
+        "ratio": 1.5
+      },
+      "tp2": {
+        "price": 2074.06,
+        "close_percent": 30,
+        "ratio": 2.5
+      },
+      "tp3": {
+        "price": 2023.06,
+        "close_percent": 20,
+        "ratio": 3.5
+      }
+    },
+    "position_size": {
+      "contracts": 0.436548,
+      "notional_usd": 961.09,
+      "leverage": 7.0,
+      "risk_usd": 22.26,
+      "margin_used": 137.3,
+      "margin_percent": 6.17,
+      "stop_distance_pct": 2.32,
+      "stop_distance_usd": 22.26
+    },
+    "score": 85,
+    "entry_reason": "High score override (80+): Price not near EMA21",
+    "status": "stopped",
+    "created_at": "2026-02-02T05:42:36.168898",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "tp3_hit": false,
+    "stop_hit": true,
+    "remaining_percent": 100,
+    "realized_pnl": 0.0,
+    "current_price": 2381.23,
+    "closed_at": "2026-02-02T16:33:52.740585"
+  }
+]

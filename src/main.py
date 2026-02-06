@@ -34,6 +34,8 @@ from src.risk.risk_manager import RiskManager
 from src.tracking.signal_tracker import SignalTracker
 from src.tracking.performance_logger import PerformanceLogger
 from src.notifications.discord_notifier import DiscordNotifier
+from src.execution.paper_engine import PaperTradingEngine
+from src.execution.paper_account import PaperAccount
 
 class SignalBot:
     """Main signal bot orchestrator"""
@@ -52,8 +54,29 @@ class SignalBot:
         self.performance_logger = PerformanceLogger()
         self.discord = DiscordNotifier()
         
-        # Initialize risk manager with performance logger (for daily report saving)
-        self.risk_manager = RiskManager(performance_logger=self.performance_logger, discord=self.discord)
+        # Initialize paper trading if enabled
+        self.paper_trading_enabled = Config.PAPER_TRADING_ENABLED
+        if self.paper_trading_enabled:
+            self.paper_account = PaperAccount(
+                initial_capital=Config.INITIAL_CAPITAL,
+                state_file=Config.PAPER_ACCOUNT_FILE
+            )
+            self.paper_engine = PaperTradingEngine(
+                bitget_client=self.data_manager.client,
+                paper_account=self.paper_account
+            )
+            logger.info("📊 Paper Trading Engine: ENABLED")
+        else:
+            self.paper_account = None
+            self.paper_engine = None
+            logger.info("📝 Paper Trading Engine: DISABLED (signal-only mode)")
+        
+        # Initialize risk manager with performance logger and paper_account
+        self.risk_manager = RiskManager(
+            performance_logger=self.performance_logger, 
+            discord=self.discord,
+            paper_account=self.paper_account
+        )
         
         logger.info("✓ All components initialized")
         
@@ -67,8 +90,13 @@ class SignalBot:
             'win_rate': today_stats.get('win_rate', 0)  # Today's win rate only
         }
         
+        # Add paper trading status to notification
+        status_msg = "🤖 Signal Bot Online"
+        if self.paper_trading_enabled:
+            status_msg += " 📊 (Paper Trading Enabled)"
+        
         self.discord.send_status_update(
-            "🤖 Signal Bot Online",
+            status_msg,
             combined_stats
         )
     
@@ -79,17 +107,90 @@ class SignalBot:
             logger.info(f"🔍 Scanning markets at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info("=" * 70)
             
-            # Get active symbols (do this BEFORE trading check to monitor existing signals)
+            # Get active symbols upfront for use throughout scan
             active_symbols = self.signal_tracker.get_active_symbols()
             
-            # ALWAYS update existing signals first (even if trading is disabled)
-            if active_symbols:
-                logger.info(f"📊 Monitoring {len(active_symbols)} active signal(s): {', '.join(active_symbols)}")
-                for symbol in active_symbols:
-                    try:
-                        self._update_active_signal(symbol)
-                    except Exception as e:
-                        logger.error(f"Error updating {symbol}: {e}")
+            # Paper trading mode: Handle order execution and position monitoring
+            if self.paper_trading_enabled and self.paper_engine:
+                # In paper trading, paper engine handles all position monitoring
+                if active_symbols:
+                    logger.info(f"📊 Paper Trading: Monitoring {len(active_symbols)} position(s): {', '.join(active_symbols)}")
+                try:
+                    # Check if any pending limit orders should fill
+                    filled_orders = self.paper_engine.check_pending_orders()
+                    for fill_data in filled_orders:
+                        symbol = fill_data['symbol']
+                        signal = self.signal_tracker.get_signal(symbol)
+                        if signal:
+                            # Update signal with fill information
+                            self.signal_tracker.update_order_filled(symbol, fill_data)
+                            
+                            # Create position and place SL/TP orders
+                            position = self.paper_engine.add_position(fill_data, signal)
+                            
+                            # Send Discord notification
+                            self.discord.send_order_filled(symbol, fill_data)
+                            
+                            logger.success(f"✅ Position opened: {symbol} @ ${fill_data['fill_price']:,.2f}")
+                    
+                    # Check exit conditions for open positions
+                    for symbol in active_symbols:
+                        signal = self.signal_tracker.get_signal(symbol)
+                        if signal and signal.get('execution_state') == 'position_open':
+                            # Get position from paper account
+                            positions = [p for p in self.paper_account.get_open_positions() if p['symbol'] == symbol]
+                            if positions:
+                                position = positions[0]
+                                exit_data = self.paper_engine.check_exit_conditions(position, signal)
+                                
+                                if exit_data:
+                                    # Update signal with exit information
+                                    exit_type = exit_data['exit_type']
+                                    
+                                    # Mark TP/SL as hit
+                                    if exit_type == 'tp1':
+                                        signal['tp1_hit'] = True
+                                    elif exit_type == 'tp2':
+                                        signal['tp2_hit'] = True
+                                    elif exit_type == 'tp3':
+                                        signal['tp3_hit'] = True
+                                    elif exit_type in ['stop_loss', 'liquidation']:
+                                        signal['stop_hit'] = True
+                                    
+                                    # Update remaining percent
+                                    signal['remaining_percent'] -= exit_data['percent_closed']
+                                    signal['realized_pnl'] += exit_data['realized_pnl']
+                                    signal['fees_paid'] += exit_data.get('fee', 0)
+                                    
+                                    # Update execution state
+                                    if signal['remaining_percent'] <= 0:
+                                        self.signal_tracker.update_execution_state(symbol, 'fully_closed')
+                                    else:
+                                        self.signal_tracker.update_execution_state(symbol, 'partially_closed')
+                                    
+                                    # Send Discord notification
+                                    self.discord.send_exit_notification(symbol, exit_type, exit_data, signal)
+                                    
+                                    logger.info(f"📉 Exit: {symbol} - {exit_type} | P&L: ${exit_data['realized_pnl']:.2f}")
+                    
+                    # Update equity curve
+                    self.paper_account.update_equity_curve()
+                    
+                    # Save paper account state
+                    self.paper_account.save_state()
+                    
+                except Exception as e:
+                    logger.error(f"Error in paper trading execution: {e}")
+            
+            # Signal-only mode: Update existing signals with old system
+            else:
+                if active_symbols:
+                    logger.info(f"📊 Signal-Only Mode: Monitoring {len(active_symbols)} signal(s): {', '.join(active_symbols)}")
+                    for symbol in active_symbols:
+                        try:
+                            self._update_active_signal(symbol)
+                        except Exception as e:
+                            logger.error(f"Error updating {symbol}: {e}")
             
             # Check if trading is allowed for NEW signals
             can_trade, reason = self.risk_manager.can_trade()
@@ -356,6 +457,35 @@ class SignalBot:
             )
             
             if signal_id:
+                # Paper trading: Place limit order
+                if self.paper_trading_enabled and self.paper_engine:
+                    try:
+                        # Create signal dict for paper engine
+                        signal_data = {
+                            'signal_id': signal_id,
+                            'symbol': symbol,
+                            'direction': direction,
+                            'entry_price': current_price,
+                            'stop_loss': stop_loss,
+                            'take_profits': take_profits,
+                            'position_size': position_size
+                        }
+                        
+                        # Place limit order
+                        order_id = self.paper_engine.place_limit_order(signal_data)
+                        
+                        # Update signal with execution data
+                        execution_data = {
+                            'entry_order_id': order_id,
+                            'liquidation_price': None,  # Will be set on fill
+                            'margin_used': position_size.get('margin_used', 0)
+                        }
+                        
+                        logger.info(f"📊 Paper Trading: Limit order placed for {symbol}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error placing paper trading order for {symbol}: {e}")
+                
                 # Send Discord notification
                 self.discord.send_new_signal(
                     symbol=symbol,

@@ -1,0 +1,19 @@
+{
+  "balance": 2000.0,
+  "initial_capital": 2000.0,
+  "total_realized_pnl": 0.0,
+  "total_fees_paid": 0.0,
+  "total_funding_costs": 0.0,
+  "positions_count": 0,
+  "trades_count": 0,
+  "equity_curve": [
+    {
+      "timestamp": "2026-02-06T00:00:00",
+      "equity": 2000.0,
+      "balance": 2000.0,
+      "unrealized_pnl": 0.0,
+      "open_positions": 0
+    }
+  ],
+  "last_updated": "2026-02-06T00:00:00"
+}

@@ -300,6 +300,140 @@ class DiscordNotifier:
             logger.error(f"Error sending error notification: {e}")
             return False
     
+    def send_order_filled(self, symbol: str, fill_data: Dict) -> bool:
+        """Send order fill notification for paper trading"""
+        try:
+            embed = {
+                "title": f"✅ Order Filled - {symbol}",
+                "color": 0x00FF00 if fill_data['side'] == 'long' else 0xFF0000,
+                "fields": [
+                    {
+                        "name": "📊 Execution Type",
+                        "value": f"Paper Trading ({fill_data.get('fee_type', 'market')})",
+                        "inline": True
+                    },
+                    {
+                        "name": "💰 Fill Price",
+                        "value": self._format_price(fill_data['fill_price']),
+                        "inline": True
+                    },
+                    {
+                        "name": "📏 Position Size",
+                        "value": f"${fill_data['size']:,.2f}",
+                        "inline": True
+                    },
+                    {
+                        "name": "💸 Fee",
+                        "value": f"${fill_data['fee']:.2f} ({fill_data['fee_rate']*100:.2f}%)",
+                        "inline": True
+                    },
+                    {
+                        "name": "📈 Slippage",
+                        "value": f"{fill_data['slippage']*100:.3f}%",
+                        "inline": True
+                    },
+                    {
+                        "name": "⚡ Leverage",
+                        "value": f"{fill_data['leverage']}×",
+                        "inline": True
+                    }
+                ],
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            payload = {"embeds": [embed]}
+            response = requests.post(self.webhook_url, json=payload)
+            return response.status_code == 204
+            
+        except Exception as e:
+            logger.error(f"Error sending order filled notification: {e}")
+            return False
+    
+    def send_exit_notification(self, symbol: str, exit_type: str, exit_data: Dict, signal: Dict) -> bool:
+        """Send position exit notification for paper trading"""
+        try:
+            # Determine title and color based on exit type
+            if exit_type == 'liquidation':
+                title = f"💀 LIQUIDATED - {symbol}"
+                color = 0x000000  # Black
+            elif exit_type == 'stop_loss':
+                title = f"🛑 Stop Loss Hit - {symbol}"
+                color = 0xFF0000  # Red
+            else:  # TP1, TP2, TP3
+                title = f"🎯 {exit_type.upper()} Hit - {symbol}"
+                color = 0x00FF00  # Green
+            
+            # Calculate total P&L including fees
+            total_pnl = exit_data['realized_pnl']
+            pnl_emoji = "💚" if total_pnl > 0 else "❤️"
+            
+            fields = [
+                {
+                    "name": "💰 Exit Price",
+                    "value": self._format_price(exit_data['exit_price']),
+                    "inline": True
+                },
+                {
+                    "name": "📊 Closed",
+                    "value": f"{exit_data['percent_closed']}%",
+                    "inline": True
+                },
+                {
+                    "name": f"{pnl_emoji} P&L",
+                    "value": f"${total_pnl:+,.2f}",
+                    "inline": True
+                }
+            ]
+            
+            # Add fee and slippage if applicable
+            if exit_data.get('fee', 0) > 0:
+                fields.append({
+                    "name": "💸 Fee",
+                    "value": f"${exit_data['fee']:.2f}",
+                    "inline": True
+                })
+            
+            if exit_data.get('slippage', 0) > 0:
+                fields.append({
+                    "name": "📉 Slippage",
+                    "value": f"{exit_data['slippage']*100:.2f}%",
+                    "inline": True
+                })
+            
+            # Add remaining position info
+            remaining = signal.get('remaining_percent', 0)
+            if remaining > 0:
+                fields.append({
+                    "name": "📦 Remaining",
+                    "value": f"{remaining}% still open",
+                    "inline": False
+                })
+            
+            # Add total realized P&L
+            total_realized = signal.get('realized_pnl', 0)
+            total_fees = signal.get('fees_paid', 0)
+            if total_realized != 0:
+                fields.append({
+                    "name": "💰 Total Realized P&L",
+                    "value": f"${total_realized:+,.2f} (Fees: ${total_fees:.2f})",
+                    "inline": False
+                })
+            
+            embed = {
+                "title": title,
+                "color": color,
+                "fields": fields,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            payload = {"embeds": [embed]}
+            response = requests.post(self.webhook_url, json=payload)
+            return response.status_code == 204
+            
+        except Exception as e:
+            logger.error(f"Error sending exit notification: {e}")
+            return False
+    
     def _get_grade(self, score: int) -> str:
         """Convert score to letter grade"""
         if score >= 90:

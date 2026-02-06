@@ -13,6 +13,11 @@ Automated trading signal bot for BitGet perpetual futures, designed for 10-15× 
 - ✅ Discord webhook notifications
 - ✅ Active signal tracking (max 1 per pair, max 1 BTC signal)
 - ✅ Performance logging & statistics
+- ✅ **Paper Trading Engine** - Realistic order execution simulation
+  - Simulates limit/market orders with live bid/ask data
+  - Tracks fees (0.02% maker, 0.06% taker), slippage, and funding rates
+  - Monitors positions for TP/SL exits and liquidation
+  - Full execution analytics (see [PAPER_TRADING_DOCS.md](PAPER_TRADING_DOCS.md))
 
 ## Trading Pairs
 

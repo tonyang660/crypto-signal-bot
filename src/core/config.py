@@ -23,6 +23,21 @@ class Config:
     MAX_LEVERAGE = float(os.getenv('MAX_LEVERAGE', '15.0') or 15.0)
     MAX_CONSECUTIVE_LOSSES = 3
     
+    # ==================== PAPER TRADING ====================
+    # Enable/disable paper trading execution simulation
+    PAPER_TRADING_ENABLED = os.getenv('PAPER_TRADING_ENABLED', 'False').lower() == 'true'
+    
+    # Paper account state file
+    PAPER_ACCOUNT_FILE = os.path.join('data', 'paper_account.json')
+    
+    # Order fill simulation settings
+    LIMIT_ORDER_TIMEOUT_SCANS = 6  # Cancel limit order after 6 scans (30 mins at 5-min intervals)
+    SIMULATE_SLIPPAGE = True
+    
+    # Funding rate application (perpetual futures)
+    APPLY_FUNDING_RATES = True
+    FUNDING_INTERVAL_HOURS = 8  # BitGet funding: 00:00, 08:00, 16:00 UTC
+    
     # ==================== TRADING PAIRS ====================
     TRADING_PAIRS: List[str] = os.getenv(
         'TRADING_PAIRS', 
@@ -120,7 +135,13 @@ class Config:
     # ==================== FILE PATHS ====================
     DATA_DIR = 'data'
     ACTIVE_SIGNALS_FILE = os.path.join(DATA_DIR, 'signals_active.json')
-    HISTORY_SIGNALS_FILE = os.path.join(DATA_DIR, 'signals_history.json')
+    
+    # Separate history files for paper trading vs signal-only mode
+    HISTORY_SIGNALS_FILE = os.path.join(
+        DATA_DIR, 
+        'signals_history_paper.json' if PAPER_TRADING_ENABLED else 'signals_history.json'
+    )
+    
     PERFORMANCE_FILE = os.path.join(DATA_DIR, 'performance.json')
     LOG_FILE = 'logs/bot.log'
     

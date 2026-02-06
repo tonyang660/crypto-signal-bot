@@ -8,7 +8,7 @@ from src.core.config import Config
 class RiskManager:
     """Manage trading risk limits and circuit breakers"""
     
-    def __init__(self, performance_logger=None, discord=None):
+    def __init__(self, performance_logger=None, discord=None, paper_account=None):
         self.equity = Config.INITIAL_CAPITAL
         self.daily_loss = 0.0
         self.weekly_loss = 0.0
@@ -26,11 +26,15 @@ class RiskManager:
         self.performance_logger = performance_logger
         self.discord = discord
         
+        # Paper trading integration
+        self.paper_account = paper_account
+        self.paper_trading_mode = Config.PAPER_TRADING_ENABLED
+        
         # Load persisted state
         self._load_state()
         
-        # Create initial file if it doesn't exist
-        if not Path(Config.PERFORMANCE_FILE).exists():
+        # Create initial file if it doesn't exist (only for signal-only mode)
+        if not self.paper_trading_mode and not Path(Config.PERFORMANCE_FILE).exists():
             self._save_state()
     
     def can_trade(self) -> Tuple[bool, str]:
@@ -99,8 +103,17 @@ class RiskManager:
     def record_trade(self, pnl: float) -> None:
         """Record trade result and update state"""
         try:
-            # Update equity
-            self.equity += pnl
+            # For paper trading, equity is managed by paper_account
+            # Only update local tracking for risk management
+            if not self.paper_trading_mode:
+                self.equity += pnl
+            else:
+                # Get current equity from paper account
+                if self.paper_account:
+                    self.equity = self.paper_account.get_equity()
+                else:
+                    logger.warning("Paper trading mode but no paper_account reference")
+                    self.equity += pnl
             
             # Track daily PnL (all trades)
             self.daily_pnl += pnl
@@ -273,6 +286,12 @@ class RiskManager:
     def _save_state(self) -> None:
         """Persist state to file"""
         try:
+            # Skip saving performance.json if paper trading is enabled
+            # Paper account handles equity tracking
+            if self.paper_trading_mode:
+                logger.debug("Paper trading mode: skipping performance.json update")
+                return
+            
             state = {
                 'daily_pnl': self.daily_pnl,  # Save daily PnL
                 'equity': self.equity,
@@ -299,16 +318,28 @@ class RiskManager:
     def _load_state(self) -> None:
         """Load persisted state from file"""
         try:
+            # For paper trading, load equity from paper_account
+            if self.paper_trading_mode and self.paper_account:
+                self.equity = self.paper_account.get_equity()
+                logger.info(f"✓ Paper trading mode - Equity loaded from paper_account: ${self.equity:.2f}")
+                # Still load risk management state from performance.json if it exists
+                # (cooldowns, consecutive losses, etc.)
+            
             if Path(Config.PERFORMANCE_FILE).exists():
                 with open(Config.PERFORMANCE_FILE, 'r') as f:
                     state = json.load(f)
+                
+                # Load risk management state (always needed)
                 self.daily_pnl = state.get('daily_pnl', 0.0)  # Load daily PnL
-                self.equity = state.get('equity', Config.INITIAL_CAPITAL)
                 self.daily_loss = state.get('daily_loss', 0.0)
                 self.weekly_loss = state.get('weekly_loss', 0.0)
                 self.weekly_pnl = state.get('weekly_pnl', 0.0)  # Load weekly PnL
                 self.consecutive_losses = state.get('consecutive_losses', 0)
                 self.trading_enabled = state.get('trading_enabled', True)
+                
+                # Only load equity from performance.json if NOT in paper trading mode
+                if not self.paper_trading_mode:
+                    self.equity = state.get('equity', Config.INITIAL_CAPITAL)
                 
                 cooldown_str = state.get('cooldown_until')
                 if cooldown_str:
@@ -326,7 +357,8 @@ class RiskManager:
                 if weekly_reset_str:
                     self.last_weekly_reset = datetime.fromisoformat(weekly_reset_str).date()
                 
-                logger.info(f"✓ Risk manager state loaded - Equity: ${self.equity:.2f}")
+                if not self.paper_trading_mode:
+                    logger.info(f"✓ Risk manager state loaded - Equity: ${self.equity:.2f}")
             
         except Exception as e:
             logger.warning(f"Could not load risk manager state: {e}")
