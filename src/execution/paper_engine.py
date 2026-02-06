@@ -64,7 +64,7 @@ class PaperTradingEngine:
             'side': signal['direction'],  # 'long' or 'short'
             'order_type': 'limit',
             'limit_price': signal['entry_price'],
-            'size': signal['position_size']['usd_amount'],
+            'size': signal['position_size']['notional_usd'],
             'leverage': signal['position_size'].get('leverage', 10),
             'status': 'pending',
             'placed_at': datetime.utcnow().isoformat(),
@@ -99,7 +99,7 @@ class PaperTradingEngine:
         
         order_id = f"PAPER_{signal['signal_id']}_MARKET"
         
-        size = signal['position_size']['usd_amount']
+        size = signal['position_size']['notional_usd']
         leverage = signal['position_size'].get('leverage', 10)
         
         # Calculate and apply taker fee
