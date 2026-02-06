@@ -457,7 +457,7 @@ class SignalBot:
             )
             
             if signal_id:
-                # Paper trading: Place limit order
+                # Paper trading: Place limit order BEFORE signal becomes visible
                 if self.paper_trading_enabled and self.paper_engine:
                     try:
                         # Create signal dict for paper engine
@@ -474,17 +474,26 @@ class SignalBot:
                         # Place limit order
                         order_id = self.paper_engine.place_limit_order(signal_data)
                         
-                        # Update signal with execution data
-                        execution_data = {
-                            'entry_order_id': order_id,
-                            'liquidation_price': None,  # Will be set on fill
-                            'margin_used': position_size.get('margin_used', 0)
-                        }
+                        # Update signal with execution tracking
+                        signal = self.signal_tracker.active_signals.get(symbol)
+                        if signal:
+                            signal['entry_order_id'] = order_id
+                            signal['liquidation_price'] = None  # Will be calculated on fill
+                            signal['margin_used'] = position_size.get('margin_used', 0)
+                            signal['paper_trading'] = True
+                            signal['execution_state'] = 'pending_entry'
+                            self.signal_tracker._save_active_signals()
                         
-                        logger.info(f"📊 Paper Trading: Limit order placed for {symbol}")
+                        logger.info(f"📊 Paper Trading: Limit order {order_id} placed for {symbol}")
                         
                     except Exception as e:
-                        logger.error(f"Error placing paper trading order for {symbol}: {e}")
+                        logger.error(f"❌ Error placing paper trading order for {symbol}: {e}")
+                        # Remove the signal since order placement failed
+                        if symbol in self.signal_tracker.active_signals:
+                            del self.signal_tracker.active_signals[symbol]
+                            self.signal_tracker._save_active_signals()
+                            logger.warning(f"🗑️ Removed {symbol} signal due to order placement failure")
+                        return  # Don't send Discord notification if order failed
                 
                 # Send Discord notification
                 self.discord.send_new_signal(
