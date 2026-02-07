@@ -36,6 +36,7 @@ class SignalScorer:
             
             # === 1. HTF Trend Alignment (0-25 points) ===
             htf_trend = MarketStructure.get_trend_direction(htf_df)
+            htf_trend_strength = 'none'  # Track for RSI context-awareness
             
             if direction == 'long':
                 if htf_trend == 'bullish':
@@ -48,15 +49,20 @@ class SignalScorer:
                         
                         if distance > 0.05:  # >5% above EMA200
                             score += 25
+                            htf_trend_strength = 'strong_bullish'
                         elif distance > 0.02:  # >2% above
                             score += 18
+                            htf_trend_strength = 'bullish'
                         else:
                             score += 12
+                            htf_trend_strength = 'weak_bullish'
                     else:
                         score += 12
+                        htf_trend_strength = 'weak_bullish'
                         
                 elif htf_trend == 'neutral':
                     score += 8
+                    htf_trend_strength = 'neutral'
             
             elif direction == 'short':
                 if htf_trend == 'bearish':
@@ -68,14 +74,19 @@ class SignalScorer:
                         
                         if distance > 0.05:
                             score += 25
+                            htf_trend_strength = 'strong_bearish'
                         elif distance > 0.02:
                             score += 18
+                            htf_trend_strength = 'bearish'
                         else:
                             score += 12
+                            htf_trend_strength = 'weak_bearish'
                     else:
                         score += 12
+                        htf_trend_strength = 'weak_bearish'
                 elif htf_trend == 'neutral':
                     score += 8
+                    htf_trend_strength = 'neutral'
             
             # === 2. Momentum Quality (0-20 points) ===
             macd_hist = primary_df['macd_hist'].tail(3).values
@@ -102,27 +113,44 @@ class SignalScorer:
                         score += 8
             
             # === 3. RSI Quality (0-12 points) ===
+            # Context-aware RSI scoring based on HTF trend strength
             rsi = primary_df['rsi'].iloc[-1]
             
             if direction == 'long':
-                # Long entries: RSI should be oversold to neutral (not overbought)
-                if 30 <= rsi <= 50:  # Sweet spot: reset but not overbought
-                    score += 12
-                elif 50 < rsi <= 60:  # Acceptable
-                    score += 8
-                elif 25 <= rsi < 30 or 60 < rsi <= 65:  # Marginal
-                    score += 4
-                # RSI > 70 or < 25 = 0 points (too extreme)
+                if htf_trend_strength in ['strong_bullish', 'bullish']:
+                    # In bullish trends, accept higher RSI (40-65 sweet spot)
+                    if 40 <= rsi <= 65:
+                        score += 12
+                    elif 30 <= rsi < 40 or 65 < rsi <= 72:
+                        score += 8
+                    elif 25 <= rsi < 30 or 72 < rsi <= 78:
+                        score += 4
+                else:
+                    # In weak/neutral trends, use traditional range
+                    if 30 <= rsi <= 55:
+                        score += 12
+                    elif 25 <= rsi < 30 or 55 < rsi <= 62:
+                        score += 8
+                    elif 62 < rsi <= 68:
+                        score += 4
             
             elif direction == 'short':
-                # Short entries: RSI should be overbought to neutral (not oversold)
-                if 50 <= rsi <= 70:  # Sweet spot: extended but not oversold
-                    score += 12
-                elif 40 <= rsi < 50:  # Acceptable
-                    score += 8
-                elif 35 <= rsi < 40 or 70 < rsi <= 75:  # Marginal
-                    score += 4
-                # RSI < 30 or > 75 = 0 points (too extreme)
+                if htf_trend_strength in ['strong_bearish', 'bearish']:
+                    # In bearish trends, accept lower RSI (35-60 sweet spot)
+                    if 35 <= rsi <= 60:
+                        score += 12
+                    elif 28 <= rsi < 35 or 60 < rsi <= 70:
+                        score += 8
+                    elif 22 <= rsi < 28 or 70 < rsi <= 75:
+                        score += 4
+                else:
+                    # In weak/neutral trends, use traditional range
+                    if 45 <= rsi <= 70:
+                        score += 12
+                    elif 38 <= rsi < 45 or 70 < rsi <= 75:
+                        score += 8
+                    elif 32 <= rsi < 38:
+                        score += 4
             
             # === 4. Entry Location Quality (0-20 points) ===
             price = entry_df['close'].iloc[-1]
@@ -227,6 +255,7 @@ class SignalScorer:
             # Use lenient trend detection for 1h intraday focus
             is_intraday_htf = Config.HTF_TIMEFRAME == '1h'
             htf_trend = MarketStructure.get_trend_direction(htf_df, lenient=is_intraday_htf)
+            htf_trend_strength = 'none'  # Track for RSI context-awareness
             
             if direction == 'long':
                 if htf_trend == 'bullish':
@@ -240,26 +269,32 @@ class SignalScorer:
                             breakdown['htf_alignment']['points'] = 25
                             breakdown['htf_alignment']['details'] = f'Strongly bullish, {distance*100:.1f}% above EMA200'
                             score += 25
+                            htf_trend_strength = 'strong_bullish'
                         elif distance > 0.02:
                             breakdown['htf_alignment']['points'] = 18
                             breakdown['htf_alignment']['details'] = f'Bullish, {distance*100:.1f}% above EMA200'
                             score += 18
+                            htf_trend_strength = 'bullish'
                         else:
                             breakdown['htf_alignment']['points'] = 12
                             breakdown['htf_alignment']['details'] = f'Weakly bullish, {distance*100:.1f}% above EMA200'
                             score += 12
+                            htf_trend_strength = 'weak_bullish'
                     else:
                         breakdown['htf_alignment']['points'] = 12
                         breakdown['htf_alignment']['details'] = 'Bullish trend'
                         score += 12
+                        htf_trend_strength = 'weak_bullish'
                 elif htf_trend == 'neutral':
                     # Give more credit for neutral on 1H intraday (choppy/ranging is common)
                     neutral_points = 15 if is_intraday_htf else 8
                     breakdown['htf_alignment']['points'] = neutral_points
                     breakdown['htf_alignment']['details'] = f'HTF neutral/ranging ({neutral_points}/25 for {"1H intraday" if is_intraday_htf else "4H swing"})'
                     score += neutral_points
+                    htf_trend_strength = 'neutral'
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing long direction'
+                    htf_trend_strength = 'opposing'
             
             elif direction == 'short':
                 if htf_trend == 'bearish':
@@ -273,26 +308,32 @@ class SignalScorer:
                             breakdown['htf_alignment']['points'] = 25
                             breakdown['htf_alignment']['details'] = f'Strongly bearish, {distance*100:.1f}% below EMA200'
                             score += 25
+                            htf_trend_strength = 'strong_bearish'
                         elif distance > 0.02:
                             breakdown['htf_alignment']['points'] = 18
                             breakdown['htf_alignment']['details'] = f'Bearish, {distance*100:.1f}% below EMA200'
                             score += 18
+                            htf_trend_strength = 'bearish'
                         else:
                             breakdown['htf_alignment']['points'] = 12
                             breakdown['htf_alignment']['details'] = f'Weakly bearish, {distance*100:.1f}% below EMA200'
                             score += 12
+                            htf_trend_strength = 'weak_bearish'
                     else:
                         breakdown['htf_alignment']['points'] = 12
                         breakdown['htf_alignment']['details'] = 'Bearish trend'
                         score += 12
+                        htf_trend_strength = 'weak_bearish'
                 elif htf_trend == 'neutral':
                     # Give more credit for neutral on 1H intraday (choppy/ranging is common)
                     neutral_points = 15 if is_intraday_htf else 8
                     breakdown['htf_alignment']['points'] = neutral_points
                     breakdown['htf_alignment']['details'] = f'HTF neutral/ranging ({neutral_points}/25 for {"1H intraday" if is_intraday_htf else "4H swing"})'
                     score += neutral_points
+                    htf_trend_strength = 'neutral'
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing short direction'
+                    htf_trend_strength = 'opposing'
             
             # === 2. Momentum Quality (0-20 points) ===
             macd_hist = primary_df['macd_hist'].tail(3).values
@@ -328,39 +369,79 @@ class SignalScorer:
                     breakdown['momentum']['details'] = f'Negative momentum (MACD: {macd_hist[-1]:.4f})'
             
             # === 3. RSI Quality (0-12 points) ===
+            # Context-aware RSI scoring based on HTF trend strength
+            # In strong trends, accept higher/lower RSI as normal; only penalize extremes
             rsi = primary_df['rsi'].iloc[-1]
             
             if direction == 'long':
-                if 30 <= rsi <= 50:
-                    breakdown['rsi_quality']['points'] = 12
-                    breakdown['rsi_quality']['details'] = f'Optimal RSI for long ({rsi:.1f})'
-                    score += 12
-                elif 50 < rsi <= 60:
-                    breakdown['rsi_quality']['points'] = 8
-                    breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
-                    score += 8
-                elif 25 <= rsi < 30 or 60 < rsi <= 65:
-                    breakdown['rsi_quality']['points'] = 4
-                    breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
-                    score += 4
+                # Adjust RSI expectations based on HTF trend
+                if htf_trend_strength in ['strong_bullish', 'bullish']:
+                    # In bullish trends, RSI naturally runs hot - accept 40-70 range
+                    if 40 <= rsi <= 65:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Good RSI in bullish trend ({rsi:.1f})'
+                        score += 12
+                    elif 30 <= rsi < 40 or 65 < rsi <= 72:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
+                        score += 8
+                    elif 25 <= rsi < 30 or 72 < rsi <= 78:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Extended RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Too extreme RSI ({rsi:.1f})'
                 else:
-                    breakdown['rsi_quality']['details'] = f'Poor RSI for long ({rsi:.1f})'
+                    # In weak/neutral trends, use traditional oversold-to-neutral range
+                    if 30 <= rsi <= 55:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Optimal RSI for long ({rsi:.1f})'
+                        score += 12
+                    elif 25 <= rsi < 30 or 55 < rsi <= 62:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
+                        score += 8
+                    elif 62 < rsi <= 68:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Poor RSI for long ({rsi:.1f})'
             
             elif direction == 'short':
-                if 50 <= rsi <= 70:
-                    breakdown['rsi_quality']['points'] = 12
-                    breakdown['rsi_quality']['details'] = f'Optimal RSI for short ({rsi:.1f})'
-                    score += 12
-                elif 40 <= rsi < 50:
-                    breakdown['rsi_quality']['points'] = 8
-                    breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
-                    score += 8
-                elif 35 <= rsi < 40 or 70 < rsi <= 75:
-                    breakdown['rsi_quality']['points'] = 4
-                    breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
-                    score += 4
+                # Adjust RSI expectations based on HTF trend
+                if htf_trend_strength in ['strong_bearish', 'bearish']:
+                    # In bearish trends, RSI naturally runs cold - accept 30-60 range
+                    if 35 <= rsi <= 60:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Good RSI in bearish trend ({rsi:.1f})'
+                        score += 12
+                    elif 28 <= rsi < 35 or 60 < rsi <= 70:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
+                        score += 8
+                    elif 22 <= rsi < 28 or 70 < rsi <= 75:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Extended RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Too extreme RSI ({rsi:.1f})'
                 else:
-                    breakdown['rsi_quality']['details'] = f'Poor RSI for short ({rsi:.1f})'
+                    # In weak/neutral trends, use traditional neutral-to-overbought range
+                    if 45 <= rsi <= 70:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Optimal RSI for short ({rsi:.1f})'
+                        score += 12
+                    elif 38 <= rsi < 45 or 70 < rsi <= 75:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
+                        score += 8
+                    elif 32 <= rsi < 38:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Poor RSI for short ({rsi:.1f})'
             
             # === 4. Entry Location Quality (0-20 points) ===
             price = entry_df['close'].iloc[-1]
