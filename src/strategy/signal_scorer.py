@@ -253,13 +253,13 @@ class SignalScorer:
                         breakdown['htf_alignment']['details'] = 'Bullish trend'
                         score += 12
                 elif htf_trend == 'neutral':
-                    # Give more credit for neutral on shorter timeframes (intraday)
+                    # Give more credit for neutral on 1H intraday (choppy/ranging is common)
                     neutral_points = 15 if is_intraday_htf else 8
                     breakdown['htf_alignment']['points'] = neutral_points
-                    breakdown['htf_alignment']['details'] = f'HTF neutral ({"acceptable for intraday" if is_intraday_htf else "weak alignment"})'
+                    breakdown['htf_alignment']['details'] = f'HTF neutral/ranging ({neutral_points}/25 for {"1H intraday" if is_intraday_htf else "4H swing"})'
                     score += neutral_points
                 else:
-                    breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
+                    breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing long direction'
             
             elif direction == 'short':
                 if htf_trend == 'bearish':
@@ -286,13 +286,13 @@ class SignalScorer:
                         breakdown['htf_alignment']['details'] = 'Bearish trend'
                         score += 12
                 elif htf_trend == 'neutral':
-                    # Give more credit for neutral on shorter timeframes (intraday)
+                    # Give more credit for neutral on 1H intraday (choppy/ranging is common)
                     neutral_points = 15 if is_intraday_htf else 8
                     breakdown['htf_alignment']['points'] = neutral_points
-                    breakdown['htf_alignment']['details'] = f'HTF neutral ({"acceptable for intraday" if is_intraday_htf else "weak alignment"})'
+                    breakdown['htf_alignment']['details'] = f'HTF neutral/ranging ({neutral_points}/25 for {"1H intraday" if is_intraday_htf else "4H swing"})'
                     score += neutral_points
                 else:
-                    breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
+                    breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing short direction'
             
             # === 2. Momentum Quality (0-20 points) ===
             macd_hist = primary_df['macd_hist'].tail(3).values

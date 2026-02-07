@@ -12,7 +12,8 @@ class MarketStructure:
         
         Args:
             df: DataFrame with EMA indicators
-            lenient: If True, use relaxed criteria for shorter timeframes (1h intraday)
+            lenient: If True, use intraday-optimized criteria (for 1H timeframe)
+                    If False, use swing trading criteria (for 4H timeframe)
         
         Returns: 'bullish', 'bearish', or 'neutral'
         """
@@ -23,21 +24,62 @@ class MarketStructure:
             ema_200 = df['ema_200'].iloc[-1]
             
             if lenient:
-                # More lenient for intraday (1h) - don't require perfect cascade
-                # Just check if price and fast EMAs are on same side of slow EMA
+                # ============================================================
+                # INTRADAY MODE (1H timeframe)
+                # ============================================================
+                # For intraday, we care about short-term momentum alignment
+                # Don't require perfect EMA cascade (too rare on 1H)
+                # Focus on: price vs fast EMAs + EMA slope direction
                 
-                # Bullish: Price above key averages and EMAs sloping up
-                if last_price > ema_21 and last_price > ema_50 and ema_21 > ema_200:
+                # Calculate EMA slopes (recent 5 candles)
+                if len(df) >= 5:
+                    ema_21_prev = df['ema_21'].iloc[-5]
+                    ema_50_prev = df['ema_50'].iloc[-5]
+                    ema_21_slope = (ema_21 - ema_21_prev) / ema_21_prev if ema_21_prev > 0 else 0
+                    ema_50_slope = (ema_50 - ema_50_prev) / ema_50_prev if ema_50_prev > 0 else 0
+                else:
+                    ema_21_slope = 0
+                    ema_50_slope = 0
+                
+                # Bullish criteria (need 2 of 3):
+                # 1. Price above EMA21
+                # 2. EMA21 above EMA50  
+                # 3. EMA21 has positive slope
+                bullish_signals = 0
+                if last_price > ema_21:
+                    bullish_signals += 1
+                if ema_21 > ema_50:
+                    bullish_signals += 1
+                if ema_21_slope > 0.001:  # 0.1% positive slope
+                    bullish_signals += 1
+                
+                # Bearish criteria (need 2 of 3):
+                # 1. Price below EMA21
+                # 2. EMA21 below EMA50
+                # 3. EMA21 has negative slope
+                bearish_signals = 0
+                if last_price < ema_21:
+                    bearish_signals += 1
+                if ema_21 < ema_50:
+                    bearish_signals += 1
+                if ema_21_slope < -0.001:  # 0.1% negative slope
+                    bearish_signals += 1
+                
+                # Determine trend
+                if bullish_signals >= 2:
                     return 'bullish'
-                
-                # Bearish: Price below key averages and EMAs sloping down  
-                elif last_price < ema_21 and last_price < ema_50 and ema_21 < ema_200:
+                elif bearish_signals >= 2:
                     return 'bearish'
-                
                 else:
                     return 'neutral'
+            
             else:
-                # Strict criteria for swing trading (4h)
+                # ============================================================
+                # SWING MODE (4H timeframe)
+                # ============================================================
+                # For swing trading, require proper EMA cascade
+                # This filters for established trends
+                
                 # Bullish: Price > EMA21 > EMA50 > EMA200
                 if last_price > ema_21 and ema_21 > ema_50 and ema_50 > ema_200:
                     return 'bullish'
