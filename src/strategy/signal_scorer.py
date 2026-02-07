@@ -2,6 +2,7 @@ import pandas as pd
 from typing import Dict
 from loguru import logger
 from src.analysis.market_structure import MarketStructure
+from src.core.config import Config
 
 class SignalScorer:
     """Calculate signal quality score (0-100)"""
@@ -223,7 +224,9 @@ class SignalScorer:
             entry_df = data['entry']
             
             # === 1. HTF Trend Alignment (0-25 points) ===
-            htf_trend = MarketStructure.get_trend_direction(htf_df)
+            # Use lenient trend detection for 1h intraday focus
+            is_intraday_htf = Config.HTF_TIMEFRAME == '1h'
+            htf_trend = MarketStructure.get_trend_direction(htf_df, lenient=is_intraday_htf)
             
             if direction == 'long':
                 if htf_trend == 'bullish':
@@ -250,9 +253,11 @@ class SignalScorer:
                         breakdown['htf_alignment']['details'] = 'Bullish trend'
                         score += 12
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 8
-                    breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 8
+                    # Give more credit for neutral on shorter timeframes (intraday)
+                    neutral_points = 15 if is_intraday_htf else 8
+                    breakdown['htf_alignment']['points'] = neutral_points
+                    breakdown['htf_alignment']['details'] = f'HTF neutral ({"acceptable for intraday" if is_intraday_htf else "weak alignment"})'
+                    score += neutral_points
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             
@@ -281,9 +286,11 @@ class SignalScorer:
                         breakdown['htf_alignment']['details'] = 'Bearish trend'
                         score += 12
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 8
-                    breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 8
+                    # Give more credit for neutral on shorter timeframes (intraday)
+                    neutral_points = 15 if is_intraday_htf else 8
+                    breakdown['htf_alignment']['points'] = neutral_points
+                    breakdown['htf_alignment']['details'] = f'HTF neutral ({"acceptable for intraday" if is_intraday_htf else "weak alignment"})'
+                    score += neutral_points
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             

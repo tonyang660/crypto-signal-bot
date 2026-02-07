@@ -6,9 +6,13 @@ class MarketStructure:
     """Analyze market structure and trend direction"""
     
     @staticmethod
-    def get_trend_direction(df: pd.DataFrame) -> str:
+    def get_trend_direction(df: pd.DataFrame, lenient: bool = False) -> str:
         """
         Determine trend direction based on EMA alignment
+        
+        Args:
+            df: DataFrame with EMA indicators
+            lenient: If True, use relaxed criteria for shorter timeframes (1h intraday)
         
         Returns: 'bullish', 'bearish', or 'neutral'
         """
@@ -18,17 +22,33 @@ class MarketStructure:
             ema_50 = df['ema_50'].iloc[-1]
             ema_200 = df['ema_200'].iloc[-1]
             
-            # Bullish: Price > EMA21 > EMA50 > EMA200
-            if last_price > ema_21 and ema_21 > ema_50 and ema_50 > ema_200:
-                return 'bullish'
-            
-            # Bearish: Price < EMA21 < EMA50 < EMA200
-            elif last_price < ema_21 and ema_21 < ema_50 and ema_50 < ema_200:
-                return 'bearish'
-            
-            # Neutral/Mixed
+            if lenient:
+                # More lenient for intraday (1h) - don't require perfect cascade
+                # Just check if price and fast EMAs are on same side of slow EMA
+                
+                # Bullish: Price above key averages and EMAs sloping up
+                if last_price > ema_21 and last_price > ema_50 and ema_21 > ema_200:
+                    return 'bullish'
+                
+                # Bearish: Price below key averages and EMAs sloping down  
+                elif last_price < ema_21 and last_price < ema_50 and ema_21 < ema_200:
+                    return 'bearish'
+                
+                else:
+                    return 'neutral'
             else:
-                return 'neutral'
+                # Strict criteria for swing trading (4h)
+                # Bullish: Price > EMA21 > EMA50 > EMA200
+                if last_price > ema_21 and ema_21 > ema_50 and ema_50 > ema_200:
+                    return 'bullish'
+                
+                # Bearish: Price < EMA21 < EMA50 < EMA200
+                elif last_price < ema_21 and ema_21 < ema_50 and ema_50 < ema_200:
+                    return 'bearish'
+                
+                # Neutral/Mixed
+                else:
+                    return 'neutral'
                 
         except Exception as e:
             logger.error(f"Error determining trend direction: {e}")
