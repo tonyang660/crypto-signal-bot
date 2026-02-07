@@ -86,7 +86,9 @@ class HVScorer(RegimeScorer):
             entry_df = data['entry']
             
             # === 1. HTF ALIGNMENT (30 points) ===
-            htf_trend = MarketStructure.get_trend_direction(htf_df)
+            from src.core.config import Config
+            is_intraday_htf = Config.HTF_TIMEFRAME == '1h'
+            htf_trend = MarketStructure.get_trend_direction(htf_df, lenient=is_intraday_htf)
             htf_points = 0
             
             if direction == 'long':
@@ -321,7 +323,9 @@ class IQScorer(RegimeScorer):
             entry_df = data['entry']
             
             # === 1. HTF ALIGNMENT (30 points) ===
-            htf_trend = MarketStructure.get_trend_direction(htf_df)
+            from src.core.config import Config
+            is_intraday_htf = Config.HTF_TIMEFRAME == '1h'
+            htf_trend = MarketStructure.get_trend_direction(htf_df, lenient=is_intraday_htf)
             htf_points = 0
             
             if direction == 'short':
@@ -555,7 +559,9 @@ class CSScorer(RegimeScorer):
             
             # === 1. HTF ALIGNMENT (30 points) ===
             # In choppy markets, HTF less critical - focus on range structure
-            htf_trend = MarketStructure.get_trend_direction(htf_df)
+            from src.core.config import Config
+            is_intraday_htf = Config.HTF_TIMEFRAME == '1h'
+            htf_trend = MarketStructure.get_trend_direction(htf_df, lenient=is_intraday_htf)
             price = htf_df['close'].iloc[-1]
             ema_21 = htf_df['ema_21'].iloc[-1]
             ema_50 = htf_df['ema_50'].iloc[-1]
