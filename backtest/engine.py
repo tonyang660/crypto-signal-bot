@@ -482,9 +482,9 @@ class BacktestEngine:
                 long_check = EntryLogic.check_long_entry(data)
                 score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
                 
-                # Allow signal if entry requirements met OR score >= 85 (exceptional score override)
-                if (long_check['valid'] or score >= 85) and score >= threshold:
-                    reason = long_check['reason'] if long_check['valid'] else f"High score override (85+): {long_check['reason']}"
+                # Allow signal if entry requirements met OR score >= 80 (exceptional score override)
+                if (long_check['valid'] or score >= 80) and score >= threshold:
+                    reason = long_check['reason'] if long_check['valid'] else f"High score override (80+): {long_check['reason']}"
                     self._create_position(symbol, 'long', data, current_time, reason, score, regime, btc_position_mult)
                     continue
                 
@@ -492,9 +492,9 @@ class BacktestEngine:
                 short_check = EntryLogic.check_short_entry(data)
                 score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
                 
-                # Allow signal if entry requirements met OR score >= 85 (exceptional score override)
-                if (short_check['valid'] or score >= 85) and score >= threshold:
-                    reason = short_check['reason'] if short_check['valid'] else f"High score override (85+): {short_check['reason']}"
+                # Allow signal if entry requirements met OR score >= 80 (exceptional score override)
+                if (short_check['valid'] or score >= 80) and score >= threshold:
+                    reason = short_check['reason'] if short_check['valid'] else f"High score override (80+): {short_check['reason']}"
                     self._create_position(symbol, 'short', data, current_time, reason, score, regime, btc_position_mult)
                 
             except Exception as e:
