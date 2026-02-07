@@ -68,7 +68,7 @@ class Config:
     
     # ==================== TIMEFRAMES ====================
     PRIMARY_TIMEFRAME = os.getenv('PRIMARY_TIMEFRAME', '15m')
-    HTF_TIMEFRAME = os.getenv('HTF_TIMEFRAME', '4h')
+    HTF_TIMEFRAME = os.getenv('HTF_TIMEFRAME', '1h')
     ENTRY_TIMEFRAME = os.getenv('ENTRY_TIMEFRAME', '5m')
     
     # BitGet timeframe mapping
