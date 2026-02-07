@@ -24,8 +24,9 @@ class EntryLogic:
             primary_df = data['primary']
             entry_df = data['entry']
             
-            # 1. HTF Bias Filter (4H must be bullish)
-            htf_trend = MarketStructure.get_trend_direction(htf_df)
+            # 1. HTF Bias Filter - use lenient mode for 1H intraday
+            is_intraday_htf = Config.HTF_TIMEFRAME == '1h'
+            htf_trend = MarketStructure.get_trend_direction(htf_df, lenient=is_intraday_htf)
             if htf_trend != 'bullish':
                 return {'valid': False, 'reason': f'HTF trend is {htf_trend}, not bullish'}
             
@@ -103,8 +104,9 @@ class EntryLogic:
             primary_df = data['primary']
             entry_df = data['entry']
             
-            # 1. HTF Bias (must be bearish)
-            htf_trend = MarketStructure.get_trend_direction(htf_df)
+            # 1. HTF Bias - use lenient mode for 1H intraday
+            is_intraday_htf = Config.HTF_TIMEFRAME == '1h'
+            htf_trend = MarketStructure.get_trend_direction(htf_df, lenient=is_intraday_htf)
             if htf_trend != 'bearish':
                 return {'valid': False, 'reason': f'HTF trend is {htf_trend}, not bearish'}
             

@@ -191,15 +191,16 @@ class SignalScorer:
             if volume_sma > 0:
                 volume_ratio = volume / volume_sma
                 
-                # More lenient thresholds for crypto (volume less reliable)
-                if volume_ratio > 1.2:  # Was 1.5x
+                # Even more lenient thresholds (crypto volume very unreliable)
+                if volume_ratio > 1.2:
                     score += 8
-                elif volume_ratio > 0.9:  # Was 1.2x
+                elif volume_ratio > 0.8:
                     score += 5
-                elif volume_ratio > 0.7:  # Was 1.0x
+                elif volume_ratio > 0.4:
                     score += 3
-                elif volume_ratio > 0.5:  # Was 0.8x
-                    score += 1
+                else:
+                    # Give 2 points regardless - volume is least important
+                    score += 2
             
             return min(score, 100)  # Cap at 100
             
@@ -286,12 +287,30 @@ class SignalScorer:
                         score += 12
                         htf_trend_strength = 'weak_bullish'
                 elif htf_trend == 'neutral':
-                    # Give more credit for neutral on 1H intraday (choppy/ranging is common)
-                    neutral_points = 15 if is_intraday_htf else 8
+                    # More granular scoring for neutral HTF - check if price action supports direction
+                    price = htf_df['close'].iloc[-1]
+                    ema_21 = htf_df['ema_21'].iloc[-1]
+                    ema_50 = htf_df['ema_50'].iloc[-1]
+                    
+                    # Award  points based on positioning within neutral range
+                    if price > ema_21 and ema_21 > ema_50:
+                        # Bullish bias within neutral - structure supports longs
+                        neutral_points = 18 if is_intraday_htf else 12
+                        breakdown['htf_alignment']['details'] = f'HTF neutral but bullish-leaning ({neutral_points}/25)'
+                        htf_trend_strength = 'neutral_bullish'
+                    elif price > ema_21:
+                        # Price above short EMA - mild bullish support
+                        neutral_points = 15 if is_intraday_htf else 8
+                        breakdown['htf_alignment']['details'] = f'HTF neutral, mild structure support ({neutral_points}/25)'
+                        htf_trend_strength = 'neutral'
+                    else:
+                        # Neutral but below key EMAs - less ideal for longs
+                        neutral_points = 10 if is_intraday_htf else 5
+                        breakdown['htf_alignment']['details'] = f'HTF neutral, weak structure ({neutral_points}/25)'
+                        htf_trend_strength = 'neutral_weak'
+                    
                     breakdown['htf_alignment']['points'] = neutral_points
-                    breakdown['htf_alignment']['details'] = f'HTF neutral/ranging ({neutral_points}/25 for {"1H intraday" if is_intraday_htf else "4H swing"})'
                     score += neutral_points
-                    htf_trend_strength = 'neutral'
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing long direction'
                     htf_trend_strength = 'opposing'
@@ -325,12 +344,30 @@ class SignalScorer:
                         score += 12
                         htf_trend_strength = 'weak_bearish'
                 elif htf_trend == 'neutral':
-                    # Give more credit for neutral on 1H intraday (choppy/ranging is common)
-                    neutral_points = 15 if is_intraday_htf else 8
+                    # More granular scoring for neutral HTF - check if price action supports direction
+                    price = htf_df['close'].iloc[-1]
+                    ema_21 = htf_df['ema_21'].iloc[-1]
+                    ema_50 = htf_df['ema_50'].iloc[-1]
+                    
+                    # Award points based on positioning within neutral range
+                    if price < ema_21 and ema_21 < ema_50:
+                        # Bearish bias within neutral - structure supports shorts
+                        neutral_points = 18 if is_intraday_htf else 12
+                        breakdown['htf_alignment']['details'] = f'HTF neutral but bearish-leaning ({neutral_points}/25)'
+                        htf_trend_strength = 'neutral_bearish'
+                    elif price < ema_21:
+                        # Price below short EMA - mild bearish support
+                        neutral_points = 15 if is_intraday_htf else 8
+                        breakdown['htf_alignment']['details'] = f'HTF neutral, mild structure support ({neutral_points}/25)'
+                        htf_trend_strength = 'neutral'
+                    else:
+                        # Neutral but above key EMAs - less ideal for shorts
+                        neutral_points = 10 if is_intraday_htf else 5
+                        breakdown['htf_alignment']['details'] = f'HTF neutral, weak structure ({neutral_points}/25)'
+                        htf_trend_strength = 'neutral_weak'
+                    
                     breakdown['htf_alignment']['points'] = neutral_points
-                    breakdown['htf_alignment']['details'] = f'HTF neutral/ranging ({neutral_points}/25 for {"1H intraday" if is_intraday_htf else "4H swing"})'
                     score += neutral_points
-                    htf_trend_strength = 'neutral'
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing short direction'
                     htf_trend_strength = 'opposing'
@@ -531,25 +568,25 @@ class SignalScorer:
                 logger.debug(f"Volume check: current={volume:,.0f}, avg={volume_sma:,.0f}, "
                            f"ratio={volume_ratio:.2f}x, recent_2_candles_avg={avg_recent:,.0f} ({recent_ratio:.2f}x)")
                 
-                # More lenient thresholds for crypto (volume less reliable)
-                if volume_ratio > 1.2:  # Was 1.5x
+                # Even more lenient volume thresholds (crypto volume very unreliable, especially on 15m)
+                # Volume is a nice-to-have confirmation, not a requirement
+                if volume_ratio > 1.2:
                     breakdown['volume']['points'] = 8
-                    breakdown['volume']['details'] = f'Strong volume ({volume_ratio:.2f}x average)'
+                    breakdown['volume']['details'] = f'Exceptional volume ({volume_ratio:.2f}x average)'
                     score += 8
-                elif volume_ratio > 0.9:  # Was 1.2x
+                elif volume_ratio > 0.8:
                     breakdown['volume']['points'] = 5
                     breakdown['volume']['details'] = f'Good volume ({volume_ratio:.2f}x average)'
                     score += 5
-                elif volume_ratio > 0.7:  # Was 1.0x
+                elif volume_ratio > 0.4:
                     breakdown['volume']['points'] = 3
-                    breakdown['volume']['details'] = f'Above average volume ({volume_ratio:.2f}x)'
+                    breakdown['volume']['details'] = f'Adequate volume ({volume_ratio:.2f}x average)'
                     score += 3
-                elif volume_ratio > 0.5:  # Was 0.8x
-                    breakdown['volume']['points'] = 1
-                    breakdown['volume']['details'] = f'Near average volume ({volume_ratio:.2f}x)'
-                    score += 1
                 else:
-                    breakdown['volume']['details'] = f'Low volume ({volume_ratio:.2f}x average)'
+                    # Don't penalize too much - give 2 points if we got this far
+                    breakdown['volume']['points'] = 2
+                    breakdown['volume']['details'] = f'Light volume ({volume_ratio:.2f}x) - relying on price action'
+                    score += 2
             else:
                 breakdown['volume']['details'] = 'Invalid volume data'
             
