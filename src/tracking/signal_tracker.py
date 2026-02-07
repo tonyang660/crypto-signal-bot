@@ -107,6 +107,8 @@ class SignalTracker:
         score: int,
         entry_reason: str,
         regime: str = 'unknown',
+        regime_algorithm: Optional[str] = None,
+        regime_confidence: float = 0.0,
         atr: float = 0.0,
         execution_data: Optional[Dict] = None
     ) -> str:
@@ -115,6 +117,8 @@ class SignalTracker:
         
         Args:
             regime: Market regime at entry (for analytics)
+            regime_algorithm: Regime-specific algorithm used (HV/IQ/CS)
+            regime_confidence: Confidence score of regime detection (0-100)
             execution_data: Optional dict with paper trading execution details
         
         Returns:
@@ -136,6 +140,8 @@ class SignalTracker:
                 'score': score,
                 'entry_reason': entry_reason,
                 'regime': regime,  # Store regime for analytics
+                'regime_algorithm': regime_algorithm or regime,  # Regime-specific algorithm (HV/IQ/CS)
+                'regime_confidence': regime_confidence,  # Confidence score (0-100)
                 'status': 'active',
                 'entry_time': datetime.now().isoformat(),  # Use entry_time for consistency
                 'tp1_hit': False,

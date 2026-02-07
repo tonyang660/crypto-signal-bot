@@ -127,6 +127,37 @@ class Config:
     VOLATILITY_MAX_RATIO = 2.0
     EXTREME_VOLATILITY_MULTIPLIER = 3.0  # Suspend trading if ATR is 3x normal (likely news event)
     
+    # ==================== REGIME ALGORITHM PARAMETERS ====================
+    # Multi-regime system: HV (Bull), IQ (Bear), CS (Choppy)
+    REGIME_ALGORITHM_ENABLED = True
+    
+    # Regime detection thresholds (used in RegimeAlgorithmManager)
+    REGIME_ADX_STRONG_THRESHOLD = 25  # ADX > 25 = strong trend
+    REGIME_ADX_WEAK_THRESHOLD = 20    # ADX < 20 = weak trend/choppy
+    REGIME_ATR_SPIKE_THRESHOLD = 1.5  # ATR > 1.5x average = volatility spike
+    REGIME_ATR_LOW_THRESHOLD = 0.8    # ATR < 0.8x average = compressed
+    REGIME_MOMENTUM_LOOKBACK = 5      # Bars to check for momentum consistency
+    REGIME_VOLUME_SPIKE_THRESHOLD = 1.5  # Volume > 1.5x SMA = spike
+    REGIME_EMA_SEPARATION_STRONG = 0.03  # 3% EMA separation = strong trend
+    
+    # Regime-specific configurations (applied by regime scorers)
+    # HV (High Velocity - Bull Market):
+    #   - Scoring threshold: 75
+    #   - TP ratios: [2.0R, 3.5R, 5.0R] - aggressive
+    #   - SL multiplier: 1.8x ATR - tighter
+    #   - Position multiplier: 1.0x - full size
+    #
+    # IQ (Inverse Quantitative - Bear Market):
+    #   - Scoring threshold: 80
+    #   - TP ratios: [1.5R, 2.5R, 4.0R] - conservative
+    #   - SL multiplier: 2.0x ATR - wider
+    #   - Position multiplier: 0.8x - reduced
+    #
+    # CS (Chop Suppression - Sideways/Choppy):
+    #   - Scoring threshold: 85
+    #   - TP ratios: [1.2R, 2.0R, 3.0R] - scalp mode  #   - SL multiplier: 1.5x ATR - tightest
+    #   - Position multiplier: 0.6x - minimal
+    
     # ==================== SIGNAL MANAGEMENT ====================
     MAX_ACTIVE_SIGNALS_PER_PAIR = 1
     MAX_ACTIVE_BTC_SIGNALS = 1  # Only 1 BTC signal at a time

@@ -30,6 +30,7 @@ from src.analysis.regime_detector import RegimeDetector
 from src.strategy.entry_logic import EntryLogic
 from src.strategy.signal_scorer import SignalScorer
 from src.strategy.stop_tp_calculator import StopTPCalculator
+from src.strategy.regime_algorithm_manager import RegimeAlgorithmManager, MarketRegime
 from src.risk.position_sizer import PositionSizer
 from backtest.config import BacktestConfig
 
@@ -396,11 +397,10 @@ class BacktestEngine:
     
     def _scan_for_signals(self, current_time: datetime):
         """Scan for new trading signals (uses EXACT live bot logic)"""
-        # === PHASE 1: BTC REGIME CHECK (Market-wide filter) ===
-        # Check BTC conditions BEFORE individual symbol analysis
-        btc_threshold_adj = 0
-        btc_position_mult = 1.0
-        btc_max_signals_adj = 0
+        # === PHASE 1: MARKET REGIME DETECTION (Market-wide, BTC-based) ===
+        # Detect market regime BEFORE individual symbol analysis
+        market_regime = MarketRegime.CS
+        regime_confidence = 50
         
         if 'BTCUSDT' in self.data:
             try:
@@ -408,42 +408,37 @@ class BacktestEngine:
                 if btc_data:
                     # Validate BTC data has enough candles for indicators
                     if len(btc_data['htf']) < 200:
-                        logger.debug(f"{current_time}: Insufficient BTC data for regime check ({len(btc_data['htf'])} candles)")
-                        btc_threshold_adj = 5  # Conservative default
-                        btc_position_mult = 0.9
-                        btc_max_signals_adj = 0
+                        logger.debug(f"{current_time}: Insufficient BTC data for regime detection ({len(btc_data['htf'])} candles)")
+                        market_regime = MarketRegime.CS  # Conservative default
+                        regime_confidence = 50
                     else:
                         btc_data['htf'] = Indicators.add_all_indicators(btc_data['htf'])
-                        btc_regime_info = RegimeDetector.check_btc_regime(btc_data['htf'])
+                        btc_data['primary'] = Indicators.add_all_indicators(btc_data['primary'])
                         
-                        # Apply BTC regime adjustments
-                        btc_threshold_adj = btc_regime_info['score_threshold_adj']
-                        btc_position_mult = btc_regime_info['position_size_mult']
-                        btc_max_signals_adj = btc_regime_info['max_signals_adj']
+                        # Detect market regime using multi-factor analysis
+                        market_regime, regime_confidence = RegimeAlgorithmManager.detect_market_regime(btc_data)
                         
-                        logger.debug(f"{current_time}: BTC Regime {btc_regime_info['regime']} - Threshold adj: +{btc_threshold_adj}, Position mult: {btc_position_mult:.2f}")
+                        logger.debug(f"{current_time}: Market Regime: {market_regime.value} (Confidence: {regime_confidence}%)")
             except Exception as e:
-                logger.warning(f"BTC regime check failed: {e}, proceeding with defaults")
-                btc_threshold_adj = 5
-                btc_position_mult = 0.9
-                btc_max_signals_adj = 0
+                logger.warning(f"Regime detection failed: {e}, defaulting to CS (safest)")
+                market_regime = MarketRegime.CS
+                regime_confidence = 50
         
-        # Check adjusted max signals limit
+        # Get regime-specific configuration
+        regime_config = SignalScorer.get_regime_config(market_regime)
+        threshold = regime_config['threshold']
+        
+        # Check max signals limit
         current_signals = len(self.active_positions)
-        adjusted_max_signals = max(1, BacktestConfig.MAX_TOTAL_ACTIVE_SIGNALS + btc_max_signals_adj)
         
-        if current_signals >= adjusted_max_signals:
-            logger.debug(f"{current_time}: Max signals reached ({current_signals}/{adjusted_max_signals}) due to BTC regime")
+        if current_signals >= BacktestConfig.MAX_TOTAL_ACTIVE_SIGNALS:
+            logger.debug(f"{current_time}: Max signals reached ({current_signals}/{BacktestConfig.MAX_TOTAL_ACTIVE_SIGNALS})")
             return
         
         # === PHASE 2: SCAN INDIVIDUAL SYMBOLS ===
         for symbol in BacktestConfig.SYMBOLS:
             # Skip if position already exists
             if symbol in self.active_positions:
-                continue
-            
-            # Check position limits
-            if len(self.active_positions) >= adjusted_max_signals:
                 continue
             
             try:
@@ -465,42 +460,29 @@ class BacktestEngine:
                 for tf in data:
                     data[tf] = Indicators.add_all_indicators(data[tf])
                 
-                # Check individual symbol regime
-                regime = RegimeDetector.detect_regime(data['primary'])
-                
-                if not RegimeDetector.should_trade_regime(regime):
-                    continue
-                
-                # Get base score threshold based on equity state
-                account_state = 'drawdown' if self.equity < self.initial_equity * 0.98 else 'normal'
-                base_threshold = BacktestConfig.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else BacktestConfig.SIGNAL_THRESHOLD_NORMAL
-                
-                # Apply BTC regime adjustment to threshold
-                threshold = base_threshold + btc_threshold_adj
-                
-                # Check long entry
-                long_check = EntryLogic.check_long_entry(data)
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
+                # Check long entry (with regime awareness)
+                long_check = EntryLogic.check_long_entry(data, regime=market_regime)
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol, regime=market_regime)
                 
                 # Allow signal if entry requirements met OR score >= 80 (exceptional score override)
                 if (long_check['valid'] or score >= 80) and score >= threshold:
                     reason = long_check['reason'] if long_check['valid'] else f"High score override (80+): {long_check['reason']}"
-                    self._create_position(symbol, 'long', data, current_time, reason, score, regime, btc_position_mult)
+                    self._create_position(symbol, 'long', data, current_time, reason, score, market_regime)
                     continue
                 
-                # Check short entry
-                short_check = EntryLogic.check_short_entry(data)
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
+                # Check short entry (with regime awareness)
+                short_check = EntryLogic.check_short_entry(data, regime=market_regime)
+                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol, regime=market_regime)
                 
                 # Allow signal if entry requirements met OR score >= 80 (exceptional score override)
                 if (short_check['valid'] or score >= 80) and score >= threshold:
                     reason = short_check['reason'] if short_check['valid'] else f"High score override (80+): {short_check['reason']}"
-                    self._create_position(symbol, 'short', data, current_time, reason, score, regime, btc_position_mult)
+                    self._create_position(symbol, 'short', data, current_time, reason, score, market_regime)
                 
             except Exception as e:
                 logger.error(f"Error scanning {symbol} at {current_time}: {e}")
     
-    def _create_position(self, symbol: str, direction: str, data: Dict, entry_time: datetime, reason: str, score: int, regime: str, btc_position_mult: float = 1.0):
+    def _create_position(self, symbol: str, direction: str, data: Dict, entry_time: datetime, reason: str, score: int, market_regime: MarketRegime):
         """Create new position (on candle close) - MATCHES LIVE BOT LOGIC"""
         entry_price = data['entry']['close'].iloc[-1]
         
@@ -511,13 +493,13 @@ class BacktestEngine:
             else:
                 entry_price = entry_price * (1 - BacktestConfig.SLIPPAGE_PERCENT / 100)
         
-        # Calculate stop loss
-        stop_loss = StopTPCalculator.calculate_stop_loss(data, direction, entry_price)
+        # Calculate stop loss using regime-specific multiplier
+        stop_loss = StopTPCalculator.calculate_stop_loss(data, direction, entry_price, regime=market_regime)
         
-        # Calculate take profits (regime-adjusted)
-        take_profits = StopTPCalculator.calculate_take_profits(entry_price, stop_loss, direction, regime)
+        # Calculate take profits using regime-specific ratios
+        take_profits = StopTPCalculator.calculate_take_profits(entry_price, stop_loss, direction, regime=market_regime)
         
-        # Calculate position size
+        # Calculate position size with regime multiplier
         available_margin = self.equity - sum(p.margin_used for p in self.active_positions.values())
         
         position_size_info = PositionSizer.calculate_position_size(
@@ -525,7 +507,8 @@ class BacktestEngine:
             entry_price,
             stop_loss,
             symbol,
-            available_margin=available_margin
+            available_margin=available_margin,
+            regime=market_regime
         )
         
         if not position_size_info:
@@ -533,13 +516,6 @@ class BacktestEngine:
         
         contracts = position_size_info['contracts']
         margin_used = position_size_info['margin_used']
-        
-        # Apply BTC regime position size adjustment
-        if btc_position_mult < 1.0:
-            original_contracts = contracts
-            contracts = max(1, int(contracts * btc_position_mult))
-            margin_used = margin_used * btc_position_mult
-            logger.debug(f"{entry_time} {symbol}: BTC regime adjusted position: {original_contracts} → {contracts} contracts ({btc_position_mult:.1%} multiplier)")
         
         # Entry fee
         entry_value = entry_price * contracts
@@ -561,7 +537,7 @@ class BacktestEngine:
             contracts=contracts,
             margin_used=margin_used,
             score=score,
-            regime=regime,
+            regime=market_regime.value,
             entry_reason=reason,
             realized_pnl=-entry_fee  # Start with negative (entry fee)
         )
@@ -571,7 +547,7 @@ class BacktestEngine:
         
         self.active_positions[symbol] = position
         
-        logger.info(f"{entry_time} {symbol}: {direction.upper()} entry | Price: ${entry_price:.2f} | Score: {score} | Regime: {regime}")
+        logger.info(f"{entry_time} {symbol}: {direction.upper()} entry | Price: ${entry_price:.2f} | Score: {score} | Regime: {market_regime.value}")
     
     def _get_mtf_data(self, symbol: str, current_time: datetime) -> Optional[Dict]:
         """Get multi-timeframe data up to current_time (NO FUTURE DATA)"""

@@ -26,6 +26,7 @@ from src.core.data_manager import DataManager
 from src.analysis.indicators import Indicators
 from src.analysis.market_structure import MarketStructure
 from src.analysis.regime_detector import RegimeDetector
+from src.strategy.regime_algorithm_manager import RegimeAlgorithmManager, MarketRegime
 from src.strategy.entry_logic import EntryLogic
 from src.strategy.signal_scorer import SignalScorer
 from src.strategy.stop_tp_calculator import StopTPCalculator
@@ -171,6 +172,8 @@ class SignalBot:
                             score=signal_creation_data['score'],
                             entry_reason=signal_creation_data['entry_reason'],
                             regime=signal_creation_data['regime'],
+                            regime_algorithm=signal_creation_data.get('regime_algorithm', signal_creation_data['regime']),
+                            regime_confidence=signal_creation_data.get('regime_confidence', 50),
                             atr=signal_creation_data['atr'],
                             execution_data=execution_data
                         )
@@ -335,44 +338,34 @@ class SignalBot:
     def _scan_symbol(self, symbol: str):
         """Scan individual symbol for entry opportunities"""
         try:
-            # === PHASE 1: BTC REGIME CHECK (Market-wide filter) ===
-            # Check BTC conditions BEFORE individual symbol analysis
+            # === PHASE 1: MARKET REGIME DETECTION ===
+            # Uses multi-factor BTC analysis to determine market-wide regime (HV/IQ/CS)
             # Only affects NEW signal creation, never touches existing positions
-            if symbol != 'BTCUSDT':  # Skip for BTC itself to avoid circular dependency
-                try:
-                    btc_data = self.data_manager.get_multi_timeframe_data('BTCUSDT')
-                    if not any(df.empty for df in btc_data.values()):
-                        btc_data['htf'] = Indicators.add_all_indicators(btc_data['htf'])
-                        btc_regime_info = RegimeDetector.check_btc_regime(btc_data['htf'])
-                        
-                        logger.info(f"🔍 BTC Regime: {btc_regime_info['regime']} - {btc_regime_info['reason']}")
-                        
-                        # Apply BTC regime adjustments to this scan
-                        btc_threshold_adj = btc_regime_info['score_threshold_adj']
-                        btc_position_mult = btc_regime_info['position_size_mult']
-                        btc_max_signals_adj = btc_regime_info['max_signals_adj']
-                    else:
-                        logger.warning("Could not fetch BTC data for regime check")
-                        btc_threshold_adj = 5  # Default: slightly conservative
-                        btc_position_mult = 0.9
-                        btc_max_signals_adj = 0
-                except Exception as e:
-                    logger.warning(f"BTC regime check failed: {e}, proceeding with defaults")
-                    btc_threshold_adj = 5
-                    btc_position_mult = 0.9
-                    btc_max_signals_adj = 0
-            else:
-                # For BTC itself, no adjustment
-                btc_threshold_adj = 0
-                btc_position_mult = 1.0
-                btc_max_signals_adj = 0
+            try:
+                btc_data = self.data_manager.get_multi_timeframe_data('BTCUSDT')
+                if not any(df.empty for df in btc_data.values()):
+                    # Add indicators to BTC data
+                    btc_data['htf'] = Indicators.add_all_indicators(btc_data['htf'])
+                    btc_data['primary'] = Indicators.add_all_indicators(btc_data['primary'])
+                    
+                    # Detect market regime using multi-factor analysis
+                    market_regime, regime_confidence = RegimeAlgorithmManager.detect_market_regime(btc_data)
+                    
+                    logger.info(f"🎯 Market Regime: {market_regime.value} (Confidence: {regime_confidence}%)")
+                else:
+                    logger.warning("Could not fetch BTC data for regime detection, defaulting to CS")
+                    market_regime = MarketRegime.CS
+                    regime_confidence = 50
+            except Exception as e:
+                logger.warning(f"Regime detection failed: {e}, defaulting to CS (safest)")
+                market_regime = MarketRegime.CS
+                regime_confidence = 50
             
-            # Check if we should create new signals based on BTC regime
+            # Check if we've exceeded max signals
             current_signals = len(self.signal_tracker.get_all_active_signals())
-            adjusted_max_signals = max(1, Config.MAX_TOTAL_ACTIVE_SIGNALS + btc_max_signals_adj)
             
-            if current_signals >= adjusted_max_signals:
-                logger.info(f"{symbol}: Max signals reached ({current_signals}/{adjusted_max_signals}) due to BTC regime")
+            if current_signals >= Config.MAX_TOTAL_ACTIVE_SIGNALS:
+                logger.info(f"{symbol}: Max signals reached ({current_signals}/{Config.MAX_TOTAL_ACTIVE_SIGNALS})")
                 return
             
             # Fetch multi-timeframe data
@@ -387,19 +380,22 @@ class SignalBot:
             for timeframe in data:
                 data[timeframe] = Indicators.add_all_indicators(data[timeframe])
             
-            # Check market regime (individual symbol)
-            regime = RegimeDetector.detect_regime(data['primary'])
+            # Get regime-specific configuration
+            regime_config = SignalScorer.get_regime_config(market_regime)
             
-            # Get base score threshold
+            # Get score threshold from regime configuration
+            threshold = regime_config['threshold']
+            
+            # Adjust for account state (drawdown = more selective)
             account_state = self.risk_manager.get_account_state()
-            base_threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
+            if account_state == 'drawdown':
+                threshold += 10
+                logger.info(f"{symbol}: Account in drawdown, threshold increased to {threshold}")
+            elif account_state == 'hot_streak':
+                threshold = max(threshold - 5, 70)  # Allow slightly lower but keep minimum
+                logger.info(f"{symbol}: Hot streak, threshold reduced to {threshold}")
             
-            # Apply BTC regime adjustment to threshold
-            threshold = base_threshold + btc_threshold_adj
-            
-            if not RegimeDetector.should_trade_regime(regime):
-                logger.info(f"{symbol}: ❌ Unfavorable regime ({regime}) | Threshold: {threshold} (base: {base_threshold} + BTC adj: {btc_threshold_adj})")
-                return
+            logger.info(f"{symbol}: Regime: {market_regime.value} | Threshold: {threshold}")
             
             # Check for extreme volatility (likely news event)
             is_extreme, vol_reason = self.risk_manager.check_extreme_volatility(symbol, data)
@@ -414,14 +410,12 @@ class SignalBot:
                     self.risk_manager.last_volatility_alert = now
                 
                 return  # Skip this symbol
-
-            logger.info(f"{symbol}: ✓ Regime check passed ({regime}) | Min threshold: {threshold}")
             
             # Check for long entry
-            long_check = EntryLogic.check_long_entry(data)
+            long_check = EntryLogic.check_long_entry(data, regime=market_regime)
             
-            # Calculate score first
-            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
+            # Calculate score using regime-specific algorithm
+            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol, regime=market_regime)
             
             # Allow signal if entry requirements met OR score >= 80 (with minimum threshold check)
             if long_check['valid'] or (score >= 80 and score >= threshold):
@@ -432,16 +426,16 @@ class SignalBot:
                     logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
                     reason = long_check['reason']
                 
-                self._create_signal_with_score(symbol, 'long', data, reason, score, breakdown, btc_position_mult)
+                self._create_signal_with_score(symbol, 'long', data, reason, score, breakdown, market_regime, regime_confidence)
                 return
             else:
                 logger.info(f"{symbol}: ❌ Long entry failed | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
             
             # Check for short entry
-            short_check = EntryLogic.check_short_entry(data)
+            short_check = EntryLogic.check_short_entry(data, regime=market_regime)
             
-            # Calculate score first
-            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
+            # Calculate score using regime-specific algorithm
+            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol, regime=market_regime)
             
             # Allow signal if entry requirements met OR score >= 80 (with minimum threshold check)
             if short_check['valid'] or (score >= 80 and score >= threshold):
@@ -452,7 +446,7 @@ class SignalBot:
                     logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
                     reason = short_check['reason']
                 
-                self._create_signal_with_score(symbol, 'short', data, reason, score, breakdown, btc_position_mult)
+                self._create_signal_with_score(symbol, 'short', data, reason, score, breakdown, market_regime, regime_confidence)
                 return
             else:
                 logger.info(f"{symbol}: ❌ Short entry failed | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
@@ -470,62 +464,48 @@ class SignalBot:
         entry_reason: str,
         score: int,
         breakdown: dict,
-        btc_position_mult: float = 1.0
+        market_regime: MarketRegime,
+        regime_confidence: float
     ):
-        """Create new trading signal with pre-calculated score and BTC regime adjustment"""
+        """Create new trading signal with pre-calculated score and regime"""
         try:
             # Get current price
             current_price = data['entry']['close'].iloc[-1]
             
-            # Detect market regime for adaptive TP targets
-            regime = RegimeDetector.detect_regime(data['primary'])
-            logger.info(f"{symbol}: Market regime detected: {regime}")
+            logger.info(f"{symbol}: Creating signal in {market_regime.value} regime")
             
-            # Check score threshold
-            account_state = self.risk_manager.get_account_state()
-            threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
+            # Get regime configuration
+            regime_config = SignalScorer.get_regime_config(market_regime)
             
-            if score < threshold:
-                logger.warning(f"{symbol}: ⚠️  Score {score}/100 below threshold {threshold} - Signal rejected")
-                return
-            
-            logger.success(f"{symbol}: ✅ Score {score}/100 exceeds threshold {threshold}")
-            
-            # Calculate stop loss
+            # Calculate stop loss using regime-specific multiplier
             stop_loss = StopTPCalculator.calculate_stop_loss(
-                data, direction, current_price
+                data, direction, current_price, regime=market_regime
             )
             
             # Get ATR for adaptive stop monitoring
             entry_atr = data['primary']['atr'].iloc[-1]
             
-            # Calculate take profits (regime-adjusted)
+            # Calculate take profits using regime-specific ratios
             take_profits = StopTPCalculator.calculate_take_profits(
-                current_price, stop_loss, direction, regime
+                current_price, stop_loss, direction, regime=market_regime
             )
             
             # Get available margin (accounting for existing positions)
             available_margin = self.signal_tracker.get_available_margin(self.risk_manager.equity)
             
-            # Calculate position size with margin constraint
+            # Calculate position size with regime multiplier
             position_size = PositionSizer.calculate_position_size(
                 self.risk_manager.equity,
                 current_price,
                 stop_loss,
                 symbol,
-                available_margin=available_margin
+                available_margin=available_margin,
+                regime=market_regime
             )
             
             if not position_size:
                 logger.error(f"{symbol}: Could not calculate position size")
                 return
-            
-            # Apply BTC regime position size adjustment
-            if btc_position_mult < 1.0:
-                original_contracts = position_size['contracts']
-                position_size['contracts'] = max(1, int(position_size['contracts'] * btc_position_mult))
-                position_size['total_value'] = position_size['contracts'] * current_price
-                logger.info(f"{symbol}: BTC regime adjusted position: {original_contracts} → {position_size['contracts']} contracts ({btc_position_mult:.1%} multiplier)")
             
             # Validate position size
             market_info = self.data_manager.client.get_market_info(symbol)
@@ -550,7 +530,9 @@ class SignalBot:
                         'position_size': position_size,
                         'score': score,
                         'entry_reason': entry_reason,
-                        'regime': regime,
+                        'regime': market_regime.value,
+                        'regime_algorithm': market_regime.value,
+                        'regime_confidence': regime_confidence,
                         'atr': entry_atr
                     }
                     
@@ -589,7 +571,9 @@ class SignalBot:
                 position_size=position_size,
                 score=score,
                 entry_reason=entry_reason,
-                regime=regime,  # Add regime for tracking
+                regime=market_regime.value,
+                regime_algorithm=market_regime.value,
+                regime_confidence=regime_confidence,
                 atr=entry_atr  # Add entry ATR for adaptive stops
             )
             

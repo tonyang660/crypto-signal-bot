@@ -4,17 +4,19 @@ from loguru import logger
 from src.analysis.market_structure import MarketStructure
 from src.analysis.regime_detector import RegimeDetector
 from src.core.config import Config
+from src.strategy.regime_algorithm_manager import MarketRegime
 
 class EntryLogic:
     """Entry condition validation for long and short positions"""
     
     @staticmethod
-    def check_long_entry(data: Dict[str, pd.DataFrame]) -> dict:
+    def check_long_entry(data: Dict[str, pd.DataFrame], regime: Optional[MarketRegime] = None) -> dict:
         """
         Check if long entry conditions are met
         
         Args:
             data: Dict with 'htf', 'primary', 'entry' dataframes
+            regime: Optional market regime for regime-specific validation
         
         Returns:
             Dict with 'valid' (bool) and 'reason' (str)
@@ -92,9 +94,13 @@ class EntryLogic:
             return {'valid': False, 'reason': f'Error: {str(e)}'}
     
     @staticmethod
-    def check_short_entry(data: Dict[str, pd.DataFrame]) -> dict:
+    def check_short_entry(data: Dict[str, pd.DataFrame], regime: Optional[MarketRegime] = None) -> dict:
         """
         Check if short entry conditions are met
+        
+        Args:
+            data: Dict with 'htf', 'primary', 'entry' dataframes
+            regime: Optional market regime for regime-specific validation
         
         Returns:
             Dict with 'valid' (bool) and 'reason' (str)

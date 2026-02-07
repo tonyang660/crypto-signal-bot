@@ -1,6 +1,7 @@
-from typing import Dict
+from typing import Dict, Optional
 from loguru import logger
 from src.core.config import Config
+from src.strategy.regime_algorithm_manager import MarketRegime
 
 class PositionSizer:
     """Calculate position size intelligently based on market conditions and trade timeframe"""
@@ -44,7 +45,8 @@ class PositionSizer:
         entry_price: float,
         stop_loss: float,
         symbol: str,
-        available_margin: float = None
+        available_margin: float = None,
+        regime: Optional[MarketRegime] = None
     ) -> Dict:
         """
         Calculate position size intelligently with dynamic leverage
@@ -70,7 +72,23 @@ class PositionSizer:
         """
         try:
             # Fixed risk per trade (1% = $20 for $2000 account)
-            risk_amount = account_equity * Config.RISK_PER_TRADE
+            base_risk_amount = account_equity * Config.RISK_PER_TRADE
+            
+            # Apply regime-specific position sizing multiplier
+            if regime == MarketRegime.HV:
+                regime_multiplier = 1.0  # Full size in bull markets
+                regime_desc = "HV (Bull)"
+            elif regime == MarketRegime.IQ:
+                regime_multiplier = 0.8  # Reduced size in bear markets
+                regime_desc = "IQ (Bear)"
+            elif regime == MarketRegime.CS:
+                regime_multiplier = 0.6  # Minimal size in choppy markets
+                regime_desc = "CS (Choppy)"
+            else:
+                regime_multiplier = 1.0  # Default if no regime provided
+                regime_desc = "Unknown"
+            
+            risk_amount = base_risk_amount * regime_multiplier
             
             # Stop distance as percentage (market risk)
             stop_distance_pct = abs(entry_price - stop_loss) / entry_price
@@ -138,7 +156,8 @@ class PositionSizer:
             else:
                 timeframe = "2+ day swing"
             
-            logger.info(f"{symbol}: {timeframe.upper()} | Position ${position_size_usd:.2f} @ {isolated_leverage:.1f}× | "
+            logger.info(f"{symbol}: {timeframe.upper()} | Regime: {regime_desc} ({regime_multiplier:.1f}x) | "
+                       f"Position ${position_size_usd:.2f} @ {isolated_leverage:.1f}× | "
                        f"Margin: ${margin_required:.2f} ({margin_percent:.1f}%) | "
                        f"Risk: ${risk_amount:.2f} | Stop: {stop_distance_pct*100:.2f}%")
             
