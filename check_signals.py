@@ -1,6 +1,7 @@
 """
 Utility script to check active signals status
 Run this to see detailed information about your active signals
+Automatically detects paper trading vs signal-only mode
 """
 import sys
 from pathlib import Path
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.tracking.signal_tracker import SignalTracker
 from src.core.data_manager import DataManager
+from src.core.config import Config
 from loguru import logger
 
 # Configure minimal logging
@@ -19,6 +21,12 @@ logger.add(sys.stdout, level="INFO", format="<level>{message}</level>")
 def main():
     """Check and display active signals"""
     try:
+        # Display mode
+        mode = "📊 Paper Trading" if Config.PAPER_TRADING_ENABLED else "📝 Signal-Only"
+        print(f"\n{mode} Mode")
+        print(f"Loading from: {Config.ACTIVE_SIGNALS_FILE}")
+        print()
+        
         tracker = SignalTracker()
         
         # Get summary

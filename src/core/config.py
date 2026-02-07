@@ -85,7 +85,7 @@ class Config:
     # ==================== STRATEGY PARAMETERS ====================
     # Indicators
     ATR_PERIOD = 14
-    ATR_STOP_MULTIPLIER = 2.5  # Crypto-appropriate (was 2.0 - too tight for volatility)
+    ATR_STOP_MULTIPLIER = 2.5  # Crypto-appropriate
     EMA_FAST = 21
     EMA_MEDIUM = 50
     EMA_SLOW = 200
