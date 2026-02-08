@@ -464,20 +464,18 @@ class BacktestEngine:
                 long_check = EntryLogic.check_long_entry(data, regime=market_regime)
                 score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol, regime=market_regime)
                 
-                # Allow signal if entry requirements met OR score >= 80 (exceptional score override)
-                if (long_check['valid'] or score >= 80) and score >= threshold:
-                    reason = long_check['reason'] if long_check['valid'] else f"High score override (80+): {long_check['reason']}"
-                    self._create_position(symbol, 'long', data, current_time, reason, score, market_regime)
+                # BOTH entry conditions AND score threshold must be met
+                if long_check['valid'] and score >= threshold:
+                    self._create_position(symbol, 'long', data, current_time, long_check['reason'], score, market_regime)
                     continue
                 
                 # Check short entry (with regime awareness)
                 short_check = EntryLogic.check_short_entry(data, regime=market_regime)
                 score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol, regime=market_regime)
                 
-                # Allow signal if entry requirements met OR score >= 80 (exceptional score override)
-                if (short_check['valid'] or score >= 80) and score >= threshold:
-                    reason = short_check['reason'] if short_check['valid'] else f"High score override (80+): {short_check['reason']}"
-                    self._create_position(symbol, 'short', data, current_time, reason, score, market_regime)
+                # BOTH entry conditions AND score threshold must be met
+                if short_check['valid'] and score >= threshold:
+                    self._create_position(symbol, 'short', data, current_time, short_check['reason'], score, market_regime)
                 
             except Exception as e:
                 logger.error(f"Error scanning {symbol} at {current_time}: {e}")

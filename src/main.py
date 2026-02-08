@@ -117,10 +117,12 @@ class SignalBot:
                 if active_symbols:
                     logger.info(f"📊 Paper Trading: Monitoring {len(active_symbols)} position(s): {', '.join(active_symbols)}")
                 
-                # Log pending orders status
+                # Log pending orders status - always show we're checking
                 pending_count = len(self.paper_engine.pending_orders)
                 if pending_count > 0:
                     logger.info(f"⏳ Checking {pending_count} pending limit order(s) for fills...")
+                else:
+                    logger.info("✓ Checked for pending orders: None waiting")
                     for order_id, order in self.paper_engine.pending_orders.items():
                         if order['status'] == 'pending':
                             try:
@@ -417,17 +419,16 @@ class SignalBot:
             # Calculate score using regime-specific algorithm
             score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol, regime=market_regime)
             
-            # Allow signal if entry requirements met OR score >= 80 (with minimum threshold check)
-            if long_check['valid'] or (score >= 80 and score >= threshold):
-                if not long_check['valid']:
-                    logger.warning(f"{symbol}: ⚠️  LONG entry requirements not fully met, but score is exceptional ({score}/100) - Creating signal with override")
-                    reason = f"High score override (80+): {long_check['reason']}"
-                else:
-                    logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
-                    reason = long_check['reason']
-                
+            # BOTH entry conditions AND score threshold must be met
+            if long_check['valid'] and score >= threshold:
+                logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
+                reason = long_check['reason']
                 self._create_signal_with_score(symbol, 'long', data, reason, score, breakdown, market_regime, regime_confidence)
                 return
+            elif long_check['valid'] and score < threshold:
+                logger.info(f"{symbol}: ❌ Long entry failed | Entry valid but score too low: {score}/100 (threshold: {threshold})")
+            elif not long_check['valid'] and score >= threshold:
+                logger.info(f"{symbol}: ❌ Long entry failed | Score sufficient ({score}/100) but entry conditions not met: {long_check['reason']}")
             else:
                 logger.info(f"{symbol}: ❌ Long entry failed | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
             
@@ -437,17 +438,16 @@ class SignalBot:
             # Calculate score using regime-specific algorithm
             score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol, regime=market_regime)
             
-            # Allow signal if entry requirements met OR score >= 80 (with minimum threshold check)
-            if short_check['valid'] or (score >= 80 and score >= threshold):
-                if not short_check['valid']:
-                    logger.warning(f"{symbol}: ⚠️  SHORT entry requirements not fully met, but score is exceptional ({score}/100) - Creating signal with override")
-                    reason = f"High score override (80+): {short_check['reason']}"
-                else:
-                    logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
-                    reason = short_check['reason']
-                
+            # BOTH entry conditions AND score threshold must be met
+            if short_check['valid'] and score >= threshold:
+                logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
+                reason = short_check['reason']
                 self._create_signal_with_score(symbol, 'short', data, reason, score, breakdown, market_regime, regime_confidence)
                 return
+            elif short_check['valid'] and score < threshold:
+                logger.info(f"{symbol}: ❌ Short entry failed | Entry valid but score too low: {score}/100 (threshold: {threshold})")
+            elif not short_check['valid'] and score >= threshold:
+                logger.info(f"{symbol}: ❌ Short entry failed | Score sufficient ({score}/100) but entry conditions not met: {short_check['reason']}")
             else:
                 logger.info(f"{symbol}: ❌ Short entry failed | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
             

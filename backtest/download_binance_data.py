@@ -73,18 +73,20 @@ class BinanceDataDownloader:
             with zipfile.ZipFile(io.BytesIO(response.content)) as z:
                 csv_filename = f"{symbol}-{interval}-{year}-{month_str}.csv"
                 with z.open(csv_filename) as f:
-                    df = pd.read_csv(f, header=None)
+                    # Try reading with infer header first
+                    df = pd.read_csv(f)
             
-            # Binance klines format:
-            # 0: Open time, 1: Open, 2: High, 3: Low, 4: Close, 5: Volume,
-            # 6: Close time, 7: Quote asset volume, 8: Number of trades,
-            # 9: Taker buy base volume, 10: Taker buy quote volume, 11: Ignore
-            
-            df.columns = [
-                'open_time', 'open', 'high', 'low', 'close', 'volume',
-                'close_time', 'quote_volume', 'trades', 'taker_buy_base',
-                'taker_buy_quote', 'ignore'
-            ]
+            # Check if we got headers (Binance data format changed)
+            if 'open_time' in df.columns:
+                # Already has proper headers, no need to rename
+                pass
+            else:
+                # Old format without headers - assign column names
+                df.columns = [
+                    'open_time', 'open', 'high', 'low', 'close', 'volume',
+                    'close_time', 'quote_volume', 'trades', 'taker_buy_base',
+                    'taker_buy_quote', 'ignore'
+                ]
             
             # Convert timestamp to datetime
             df['timestamp'] = pd.to_datetime(df['open_time'], unit='ms')
@@ -289,36 +291,36 @@ class BinanceDataDownloader:
 def main():
     """Download historical data from Binance"""
     
-    # Configuration
+    # Configuration - All trading pairs from live config
     SYMBOLS = [
-        'BTCUSDT',
-        'ETHUSDT',
-        'SOLUSDT',
-        'XRPUSDT',
-        'BNBUSDT',
-        'XLMUSDT',  # Note: XLM might be XLMBTC or XLMUSDT
-        'ADAUSDT',
-        'DOGEUSDT',
-        'SUIUSDT',  # Newer coin - might not have data before 2023
-        'HBARUSDT',
-        'LINKUSDT',
-        'AVAXUSDT',
-        # 'HYPEUSDT',  # Very new - might not be available
-        # 'XMRUSDT',   # XMR was delisted from many exchanges
-        # 'PEPEUSDT',  # Meme coin - newer, might not have much history
+        # Already have data (re-download to update through 2024+)
+        'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'SOLUSDT', 
+        'DOGEUSDT', 'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'XLMUSDT',
+        'HBARUSDT', 'SUIUSDT',
+        
+        # Additional pairs from live config
+        'TRXUSDT', 'LTCUSDT', 'SHIBUSDT', 'DOTUSDT', 'ALGOUSDT',
+        'FILUSDT', 'VETUSDT', 'ARBUSDT', 'RENDERUSDT', 'JUPUSDT',
+        'POLUSDT', 'ONDOUSDT', 'TAOUSDT', 'QNTUSDT', 'XDCUSDT',
+        'AAVEUSDT', 'UNIUSDT', 'TONUSDT', 'APTUSDT', 'CROUSDT',
+        'BGBUSDT', 'PEPEUSDT', 'ZECUSDT',
+        
+        # Very new coins (might have limited data)
+        'HYPEUSDT',  # Very new - might not be available
+        'XMRUSDT',   # XMR delisted from some exchanges, try anyway
     ]
     
-    INTERVALS = ['5m', '15m', '4h']  # Your strategy's required timeframes
-    START_YEAR = 2021  # Start from 2021 for faster download, or 2020/2019 for more data
+    INTERVALS = ['5m', '15m', '1h']  # Your strategy's required timeframes
+    START_YEAR = 2021  # Start from 2021 for 4 years of data
     
     # Market type: 'spot' for regular trading, 'futures' for perpetual contracts
-    # Most of these symbols are available on spot, but your live bot uses futures
-    # Try 'spot' first since it has longer history, fallback to 'futures' if needed
-    MARKET_TYPE = 'spot'
+    MARKET_TYPE = 'futures'  # Use futures data to match live trading
     
     downloader = BinanceDataDownloader()
     
-    logger.info("\n⚠️  NOTE: This will download several GB of data and may take 10-30 minutes")
+    logger.info("\n⚠️  DOWNLOADING FUTURES DATA FOR 39 SYMBOLS")
+    logger.info("⏱️  Estimated time: 30-60 minutes (depends on data availability)")
+    logger.info("📊 Downloading 3 timeframes from 2021-2024 (~117 datasets)")
     logger.info("Press Ctrl+C to cancel\n")
     
     time.sleep(3)

@@ -17,8 +17,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from loguru import logger
 from backtest.config import BacktestConfig
-from backtest.data_fetcher import HistoricalDataFetcher
-from backtest.engine import BacktestEngine
 
 def main():
     parser = argparse.ArgumentParser(description='Quick backtest runner')
