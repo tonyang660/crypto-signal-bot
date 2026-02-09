@@ -289,30 +289,63 @@ class BinanceDataDownloader:
 def main():
     """Download historical data from Binance"""
     
-    # Configuration
+    # Configuration - All 38 trading pairs
     SYMBOLS = [
+        # Major cryptocurrencies
         'BTCUSDT',
         'ETHUSDT',
-        'SOLUSDT',
-        'XRPUSDT',
         'BNBUSDT',
-        'XLMUSDT',  # Note: XLM might be XLMBTC or XLMUSDT
-        'ADAUSDT',
+        'XRPUSDT',
+        'SOLUSDT',
+        'TRXUSDT',
         'DOGEUSDT',
-        'SUIUSDT',  # Newer coin - might not have data before 2023
-        'HBARUSDT',
+        'ADAUSDT',
+        
+        # Popular altcoins
         'LINKUSDT',
+        'LTCUSDT',
         'AVAXUSDT',
-        # 'HYPEUSDT',  # Very new - might not be available
-        # 'XMRUSDT',   # XMR was delisted from many exchanges
-        # 'PEPEUSDT',  # Meme coin - newer, might not have much history
+        'SUIUSDT',      # Newer (2023+)
+        'XLMUSDT',
+        'TONUSDT',      # Newer (2024+)
+        'DOTUSDT',
+        'UNIUSDT',
+        'APTUSDT',      # Newer (2022+)
+        'ALGOUSDT',
+        'FILUSDT',
+        'VETUSDT',
+        'ARBUSDT',      # Newer (2023+)
+        
+        # Privacy & older coins
+        'XMRUSDT',      # May have limited data (delisted from some exchanges)
+        'ZECUSDT',
+        'HBARUSDT',
+        
+        # Meme coins
+        'SHIBUSDT',
+        'PEPEUSDT',     # Newer (2023+)
+        
+        # DeFi & AI sector
+        'AAVEUSDT',
+        'TAOUSDT',      # Newer (2024+)
+        'RENDERUSDT',   # Newer (2024+)
+        'JUPUSDT',      # Newer (2024+)
+        
+        # Other altcoins
+        'CROUSDT',
+        'BGBUSDT',      # May have limited availability
+        'ONDOUSDT',     # Newer (2024+)
+        'POLUSDT',      # Formerly MATIC
+        'FLRUSDT',
+        'QNTUSDT',      # Newer (2022+)
+        'XDCUSDT',      # May have limited availability
+        'HYPEUSDT',     # Very new (2025+) - might not be available
     ]
     
-    INTERVALS = ['5m', '15m', '4h']  # Your strategy's required timeframes
-    START_YEAR = 2021  # Start from 2021 for faster download, or 2020/2019 for more data
+    INTERVALS = ['5m', '15m', '1h']  # Strategy required timeframes
+    START_YEAR = 2021  # Start from 2021 (adjust to 2020 or 2019 for more history)
     
     # Market type: 'spot' for regular trading, 'futures' for perpetual contracts
-    # Most of these symbols are available on spot, but your live bot uses futures
     # Try 'spot' first since it has longer history, fallback to 'futures' if needed
     MARKET_TYPE = 'spot'
     
