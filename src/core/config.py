@@ -26,17 +26,21 @@ class Config:
     # ==================== TRADING PAIRS ====================
     TRADING_PAIRS: List[str] = os.getenv(
         'TRADING_PAIRS', 
-        'BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT,ADAUSDT,LINKUSDT,AVAXUSDT,AAVEUSDT,UNIUSDT,TRXUSDT,TONUSDT,APTUSDT'
+        'BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,SOLUSDT,TRXUSDT,DOGEUSDT,ADAUSDT,HYPEUSDT,LINKUSDT,XMRUSDT,XLMUSDT,LTCUSDT,AVAXUSDT,SUIUSDT,ZECUSDT,HBARUSDT,SHIBUSDT,TONUSDT,CROUSDT,DOTUSDT,UNIUSDT,BGBUSDT,TAOUSDT,AAVEUSDT,PEPEUSDT,ONDOUSDT,POLUSDT,APTUSDT,ALGOUSDT,FLRUSDT,QNTUSDT,FILUSDT,RENDERUSDT,VETUSDT,ARBUSDT,XDCUSDT,JUPUSDT'
     ).split(',')
     
     # ==================== CORRELATION GROUPS ====================
     # Group pairs by correlation to prevent overexposure
     CORRELATION_GROUPS = {
-        'btc_followers': ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'],  # High BTC correlation 0.85+
-        'mid_caps': ['ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'SOLUSDT'],  # Mid correlation 0.75-0.85
-        'defi': ['AAVEUSDT', 'UNIUSDT'],  # DeFi sector
-        'layer1': ['TRXUSDT', 'TONUSDT', 'APTUSDT'],  # L1 platforms
-        'independent': ['XRPUSDT']  # Lower BTC correlation <0.75
+        'btc_followers': ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'LTCUSDT'],  # High BTC correlation 0.85+
+        'major_alts': ['SOLUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT', 'UNIUSDT'],  # Major altcoins
+        'layer1': ['TRXUSDT', 'TONUSDT', 'APTUSDT', 'SUIUSDT', 'HBARUSDT', 'ALGOUSDT', 'ARBUSDT'],  # L1 platforms
+        'defi': ['AAVEUSDT', 'UNIUSDT', 'JUPUSDT', 'RENDERUSDT'],  # DeFi sector
+        'meme': ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT'],  # Meme coins
+        'privacy': ['XMRUSDT', 'ZECUSDT'],  # Privacy coins
+        'ai_sector': ['TAOUSDT', 'RENDERUSDT', 'HYPEUSDT'],  # AI/ML sector
+        'gaming_rwa': ['ONDOUSDT', 'BGBUSDT', 'FILUSDT', 'QNTUSDT'],  # Gaming & RWA
+        'independent': ['XRPUSDT', 'XLMUSDT', 'CROUSDT', 'POLUSDT', 'FLRUSDT', 'VETUSDT', 'XDCUSDT']  # Lower correlation
     }
     
     # Maximum concurrent signals per correlation group
