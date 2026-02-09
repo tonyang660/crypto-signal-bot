@@ -336,18 +336,17 @@ def main():
         'BGBUSDT',      # May have limited availability
         'ONDOUSDT',     # Newer (2024+)
         'POLUSDT',      # Formerly MATIC
-        'FLRUSDT',
         'QNTUSDT',      # Newer (2022+)
         'XDCUSDT',      # May have limited availability
         'HYPEUSDT',     # Very new (2025+) - might not be available
     ]
     
-    INTERVALS = ['5m', '15m', '1h']  # Strategy required timeframes
+    INTERVALS = ['5m', '15m', '4h']  # Strategy required timeframes
     START_YEAR = 2021  # Start from 2021 (adjust to 2020 or 2019 for more history)
     
     # Market type: 'spot' for regular trading, 'futures' for perpetual contracts
     # Try 'spot' first since it has longer history, fallback to 'futures' if needed
-    MARKET_TYPE = 'spot'
+    MARKET_TYPE = 'futures'
     
     downloader = BinanceDataDownloader()
     
