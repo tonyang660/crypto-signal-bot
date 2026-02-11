@@ -15,6 +15,10 @@ class Config:
     # Discord
     DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
     
+    # ==================== TIMEZONE ====================
+    # Timezone for logs and reports (defaults to US Eastern)
+    TIMEZONE = os.getenv('TIMEZONE', 'America/New_York')
+    
     # ==================== CAPITAL & RISK ====================
     INITIAL_CAPITAL = float(os.getenv('INITIAL_CAPITAL', '2000') or 2000)
     RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.01') or 0.01)  # 1%
@@ -116,7 +120,7 @@ class Config:
     # ==================== SIGNAL MANAGEMENT ====================
     MAX_ACTIVE_SIGNALS_PER_PAIR = 1
     MAX_ACTIVE_BTC_SIGNALS = 1  # Only 1 BTC signal at a time
-    MAX_TOTAL_ACTIVE_SIGNALS = 4  # Increased from 3 to accommodate more pairs (but correlation limits prevent overexposure)
+    MAX_TOTAL_ACTIVE_SIGNALS = 4 
     
     # ==================== SCANNING ====================
     SCAN_INTERVAL_SECONDS = int(os.getenv('SCAN_INTERVAL_SECONDS', 300))  # 5 minutes

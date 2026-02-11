@@ -4,24 +4,45 @@ from datetime import datetime
 from loguru import logger
 from typing import Dict
 import sys
+import pytz
 
-# Configure logger
+# Import timezone utility
+from src.core.config import Config
+
+# Get timezone-aware datetime
+def get_local_time():
+    """Get current time in configured timezone"""
+    utc_now = datetime.now(pytz.utc)
+    local_tz = pytz.timezone(Config.TIMEZONE)
+    return utc_now.astimezone(local_tz)
+
+# Patch logger records to use local timezone
+def patcher(record):
+    """Convert log record time to local timezone"""
+    local_tz = pytz.timezone(Config.TIMEZONE)
+    record["time"] = record["time"].astimezone(local_tz)
+
+# Configure logger with timezone
 logger.remove()
 logger.add(
     sys.stdout,
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
-    level="INFO"
+    level="INFO",
+    patcher=patcher
 )
 logger.add(
     "logs/bot.log",
     rotation="1 day",
     retention="30 days",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
-    level="DEBUG"
+    level="DEBUG",
+    patcher=patcher
 )
 
+# Log timezone being used
+logger.info(f"📍 Timezone: {Config.TIMEZONE}")
+
 # Import components
-from src.core.config import Config
 from src.core.data_manager import DataManager
 from src.analysis.indicators import Indicators
 from src.analysis.market_structure import MarketStructure
@@ -76,7 +97,7 @@ class SignalBot:
         """Main market scanning loop"""
         try:
             logger.info("=" * 70)
-            logger.info(f"🔍 Scanning markets at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"🔍 Scanning markets at {get_local_time().strftime('%Y-%m-%d %H:%M:%S %Z')}")
             logger.info("=" * 70)
             
             # Get active symbols (do this BEFORE trading check to monitor existing signals)
@@ -455,27 +476,27 @@ class SignalBot:
                         new_stop_loss=hit_info.get('new_stop_loss')
                     )
                     
-                    # Record partial profit immediately (affects daily PnL)
+                    # Calculate duration for logging
+                    entry_time = datetime.fromisoformat(signal.get('entry_time', signal.get('created_at', datetime.now().isoformat())))
+                    duration = (datetime.now() - entry_time).total_seconds() / 3600
+                    
+                    # Record partial profit immediately (affects daily PnL AND daily report)
                     self.risk_manager.record_trade(hit_info['pnl'])
                     
-                    # Log full trade if position fully closed
-                    if hit_info['remaining_percent'] == 0:
-                        # Calculate duration
-                        entry_time = datetime.fromisoformat(signal.get('entry_time', signal.get('created_at', datetime.now().isoformat())))
-                        duration = (datetime.now() - entry_time).total_seconds() / 3600
-                        
-                        self.performance_logger.log_trade(
-                            signal_id=signal['signal_id'],
-                            symbol=symbol,
-                            direction=signal['direction'],
-                            entry_price=signal['entry_price'],
-                            exit_price=current_price,
-                            pnl=hit_info['total_pnl'],
-                            exit_reason='completed',
-                            regime=signal.get('regime', 'unknown'),
-                            score=signal.get('score', 0),
-                            duration_hours=duration
-                        )
+                    # Log each partial TP as a trade (so it shows in daily report)
+                    exit_reason = 'completed' if hit_info['remaining_percent'] == 0 else f"partial_tp{hit_info['level']}"
+                    self.performance_logger.log_trade(
+                        signal_id=signal['signal_id'],
+                        symbol=symbol,
+                        direction=signal['direction'],
+                        entry_price=signal['entry_price'],
+                        exit_price=current_price,
+                        pnl=hit_info['pnl'],  # Log the partial PnL
+                        exit_reason=exit_reason,
+                        regime=signal.get('regime', 'unknown'),
+                        score=signal.get('score', 0),
+                        duration_hours=duration
+                    )
                 
                 elif hit_info['type'] == 'stop_hit':
                     # Send stop loss notification
@@ -520,8 +541,26 @@ class SignalBot:
                         f"✅ Protected from full loss while keeping upside potential."
                     )
                     
+                    # Calculate duration for logging
+                    entry_time = datetime.fromisoformat(signal.get('entry_time', signal.get('created_at', datetime.now().isoformat())))
+                    duration = (datetime.now() - entry_time).total_seconds() / 3600
+                    
                     # Record the partial exit PnL
                     self.risk_manager.record_trade(hit_info['partial_pnl'])
+                    
+                    # Log partial protection exit as a trade
+                    self.performance_logger.log_trade(
+                        signal_id=signal['signal_id'],
+                        symbol=symbol,
+                        direction=signal['direction'],
+                        entry_price=signal['entry_price'],
+                        exit_price=hit_info['price'],
+                        pnl=hit_info['partial_pnl'],
+                        exit_reason='partial_protection',
+                        regime=signal.get('regime', 'unknown'),
+                        score=signal.get('score', 0),
+                        duration_hours=duration
+                    )
             
         except Exception as e:
             logger.error(f"Error updating signal for {symbol}: {e}")

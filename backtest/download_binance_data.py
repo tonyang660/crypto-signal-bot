@@ -73,7 +73,13 @@ class BinanceDataDownloader:
             with zipfile.ZipFile(io.BytesIO(response.content)) as z:
                 csv_filename = f"{symbol}-{interval}-{year}-{month_str}.csv"
                 with z.open(csv_filename) as f:
+                    # Try reading with header first, then without
                     df = pd.read_csv(f, header=None)
+            
+            # Check if first row contains header strings (not numeric)
+            if df.iloc[0, 0] == 'open_time' or not str(df.iloc[0, 0]).isdigit():
+                # Skip header row
+                df = df.iloc[1:].reset_index(drop=True)
             
             # Binance klines format:
             # 0: Open time, 1: Open, 2: High, 3: Low, 4: Close, 5: Volume,
@@ -86,9 +92,13 @@ class BinanceDataDownloader:
                 'taker_buy_quote', 'ignore'
             ]
             
-            # Convert timestamp to datetime
-            df['timestamp'] = pd.to_datetime(df['open_time'], unit='ms')
+            # Convert timestamp to datetime (ensure open_time is numeric)
+            df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce')
+            df['timestamp'] = pd.to_datetime(df['open_time'], unit='ms', errors='coerce')
             df.set_index('timestamp', inplace=True)
+            
+            # Drop rows with invalid timestamps
+            df = df[df.index.notna()]
             
             # Select only OHLCV columns
             df = df[['open', 'high', 'low', 'close', 'volume']].copy()
@@ -341,7 +351,7 @@ def main():
         'HYPEUSDT',     # Very new (2025+) - might not be available
     ]
     
-    INTERVALS = ['5m', '15m', '4h']  # Strategy required timeframes
+    INTERVALS = ['5m', '15m', '1h', '4h']  # Strategy required timeframes
     START_YEAR = 2021  # Start from 2021 (adjust to 2020 or 2019 for more history)
     
     # Market type: 'spot' for regular trading, 'futures' for perpetual contracts

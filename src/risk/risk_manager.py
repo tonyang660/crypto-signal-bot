@@ -181,22 +181,25 @@ class RiskManager:
                 if self.performance_logger and self.discord:
                     try:
                         logger.info("📊 New day detected - Saving daily report before reset")
-                        today_stats = self.performance_logger.save_daily_report()
+                        
+                        # Get YESTERDAY's stats (trades from the day that just ended)
+                        yesterday_stats = self.performance_logger.save_daily_report(use_yesterday=True)
+                        
                         risk_stats = self.get_risk_stats()
                         
                         # Combine stats for Discord display
                         combined_stats = {
                             'equity': risk_stats['equity'],
-                            'daily_pnl': risk_stats['daily_pnl'],
-                            'win_rate': today_stats.get('win_rate', 0)
+                            'daily_pnl': risk_stats['daily_pnl'],  # Yesterday's PnL before reset
+                            'win_rate': yesterday_stats.get('win_rate', 0)
                         }
                         
                         message = f"""
                         **Daily Performance Report**
 
-                        Trades: {today_stats.get('total_trades', 0)}
-                        Win Rate: {today_stats.get('win_rate', 0):.1f}%
-                        Total PnL: ${today_stats.get('total_pnl', 0):+.2f}
+                        Trades: {yesterday_stats.get('total_trades', 0)}
+                        Win Rate: {yesterday_stats.get('win_rate', 0):.1f}%
+                        Total PnL: ${yesterday_stats.get('total_pnl', 0):+.2f}
 
                         Account Equity: ${risk_stats['equity']:.2f}
                         Daily PnL: ${risk_stats['daily_pnl']:+.2f}
