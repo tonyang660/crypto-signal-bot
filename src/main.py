@@ -27,16 +27,14 @@ logger.remove()
 logger.add(
     sys.stdout,
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
-    level="INFO",
-    patch=patcher
+    level="INFO"
 )
 logger.add(
     "logs/bot.log",
     rotation="1 day",
     retention="30 days",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
-    level="DEBUG",
-    patch=patcher
+    level="DEBUG"
 )
 
 # Log timezone being used
