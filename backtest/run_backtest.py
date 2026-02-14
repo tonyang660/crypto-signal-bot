@@ -16,24 +16,43 @@ import json
 from backtest.config import BacktestConfig
 from backtest.data_loader import HistoricalDataFetcher
 from backtest.engine import BacktestEngine
+from backtest.check_data_availability import DataAvailabilityChecker
 
 def main():
     """Run complete backtest"""
-    logger.info("="*80)
-    logger.info("SIGNAL BOT BACKTEST")
-    logger.info("="*80)
-    logger.info(f"Period: {BacktestConfig.START_DATE} to {BacktestConfig.END_DATE}")
-    logger.info(f"Symbols: {', '.join(BacktestConfig.SYMBOLS)}")
-    logger.info(f"Initial Capital: ${BacktestConfig.INITIAL_CAPITAL}")
-    logger.info(f"Conservative Mode: {BacktestConfig.CONSERVATIVE_MODE}")
-    logger.info("="*80)
+    # Configure logging based on ENABLE_LOGGING setting
+    if not BacktestConfig.ENABLE_LOGGING:
+        # Remove all handlers and disable logging completely
+        logger.remove()
+        # Add a sink that does nothing (suppresses all logs)
+        logger.add(lambda msg: None, level="CRITICAL")
+    
+    # Get symbols with complete data coverage
+    symbols_to_use = BacktestConfig.get_symbols()
+    
+    # Always print initial backtest summary (regardless of ENABLE_LOGGING)
+    print("\n" + "="*80)
+    print("SIGNAL BOT BACKTEST")
+    print("="*80)
+    print(f"Period:           {BacktestConfig.START_DATE.strftime('%Y-%m-%d')} to {BacktestConfig.END_DATE.strftime('%Y-%m-%d')}")
+    print(f"Symbols:          {len(symbols_to_use)} symbols with complete data")
+    print(f"Symbol List:      {', '.join(symbols_to_use)}")
+    print(f"Initial Capital:  ${BacktestConfig.INITIAL_CAPITAL:,.0f}")
+    print(f"Conservative:     {BacktestConfig.CONSERVATIVE_MODE}")
+    print(f"Logging Enabled:  {BacktestConfig.ENABLE_LOGGING}")
+    print("="*80 + "\n")
+    
+    if not symbols_to_use:
+        print("ERROR: No symbols with complete data coverage - aborting backtest")
+        return
     
     # Step 1: Fetch historical data
-    logger.info("\n[STEP 1/3] Fetching historical data...")
+    if BacktestConfig.ENABLE_LOGGING:
+        logger.info("\n[STEP 1/3] Fetching historical data...")
     fetcher = HistoricalDataFetcher()
     
     data = fetcher.fetch_all_data(
-        symbols=BacktestConfig.SYMBOLS,
+        symbols=symbols_to_use,  # Use filtered symbols
         start_date=BacktestConfig.START_DATE,
         end_date=BacktestConfig.END_DATE,
         timeframes=[
@@ -44,30 +63,36 @@ def main():
     )
     
     if not data:
-        logger.error("Failed to fetch data - aborting backtest")
+        if BacktestConfig.ENABLE_LOGGING:
+            logger.error("Failed to fetch data - aborting backtest")
         return
     
-    logger.success("Data fetched successfully")
+    if BacktestConfig.ENABLE_LOGGING:
+        logger.success("Data fetched successfully")
     
     # Step 2: Run backtest
-    logger.info("\n[STEP 2/3] Running backtest engine...")
+    if BacktestConfig.ENABLE_LOGGING:
+        logger.info("\n[STEP 2/3] Running backtest engine...")
     engine = BacktestEngine(data)
     results = engine.run()
     
     # Step 3: Display and save results
-    logger.info("\n[STEP 3/3] Processing results...")
+    if BacktestConfig.ENABLE_LOGGING:
+        logger.info("\n[STEP 3/3] Processing results...")
     
     if 'error' in results:
-        logger.error(f"Backtest error: {results['error']}")
+        if BacktestConfig.ENABLE_LOGGING:
+            logger.error(f"Backtest error: {results['error']}")
         return
     
     # Display results
     print_results(results, engine)
     
     # Save results
-    save_results(results, engine)
+    save_results(results, engine, symbols_to_use)
     
-    logger.success("\nBacktest complete!")
+    if BacktestConfig.ENABLE_LOGGING:
+        logger.success("\nBacktest complete!")
 
 def print_results(results: dict, engine: BacktestEngine):
     """Print formatted results"""
@@ -137,7 +162,7 @@ def print_results(results: dict, engine: BacktestEngine):
     
     print("\n" + "="*80)
 
-def save_results(results: dict, engine: BacktestEngine):
+def save_results(results: dict, engine: BacktestEngine, symbols: list):
     """Save results to JSON file"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"backtest_{timestamp}.json"
@@ -148,7 +173,7 @@ def save_results(results: dict, engine: BacktestEngine):
         'config': {
             'start_date': str(BacktestConfig.START_DATE),
             'end_date': str(BacktestConfig.END_DATE),
-            'symbols': BacktestConfig.SYMBOLS,
+            'symbols': symbols,
             'initial_capital': BacktestConfig.INITIAL_CAPITAL,
             'conservative_mode': BacktestConfig.CONSERVATIVE_MODE,
             'slippage': BacktestConfig.SLIPPAGE_PERCENT,
@@ -181,14 +206,16 @@ def save_results(results: dict, engine: BacktestEngine):
     with open(filepath, 'w') as f:
         json.dump(output, f, indent=2)
     
-    logger.info(f"Results saved to: {filepath}")
+    if BacktestConfig.ENABLE_LOGGING:
+        logger.info(f"Results saved to: {filepath}")
     
     # Also save a CSV of trades for easy analysis
     import pandas as pd
     trades_df = pd.DataFrame(output['trades'])
     csv_path = filepath.with_suffix('.csv')
     trades_df.to_csv(csv_path, index=False)
-    logger.info(f"Trades CSV saved to: {csv_path}")
+    if BacktestConfig.ENABLE_LOGGING:
+        logger.info(f"Trades CSV saved to: {csv_path}")
 
 if __name__ == '__main__':
     main()

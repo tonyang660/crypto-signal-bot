@@ -20,6 +20,11 @@ from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import sys
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -105,7 +110,24 @@ class BacktestEngine:
         self.total_fees_paid = 0.0
         self.total_slippage_cost = 0.0
         
-        logger.info(f"Backtest initialized with ${self.equity:.2f}")
+        if BacktestConfig.ENABLE_LOGGING:
+            logger.info(f"Backtest initialized with ${self.equity:.2f}")
+    
+    def _log(self, level: str, message: str):
+        """Conditional logging based on config"""
+        if not BacktestConfig.ENABLE_LOGGING:
+            return
+        
+        if level == 'info':
+            logger.info(message)
+        elif level == 'debug':
+            logger.debug(message)
+        elif level == 'warning':
+            logger.warning(message)
+        elif level == 'error':
+            logger.error(message)
+        elif level == 'success':
+            logger.success(message)
     
     def run(self) -> Dict:
         """
@@ -114,9 +136,9 @@ class BacktestEngine:
         Returns:
             Results dictionary with metrics
         """
-        logger.info("="*70)
-        logger.info("STARTING BACKTEST")
-        logger.info("="*70)
+        self._log('info', "="*70)
+        self._log('info', "STARTING BACKTEST")
+        self._log('info', "="*70)
         
         # Get date range from data
         all_dates = set()
@@ -131,22 +153,23 @@ class BacktestEngine:
         start_date = sorted_dates[0]
         end_date = sorted_dates[-1]
         
-        logger.info(f"Backtest period: {start_date} to {end_date}")
-        logger.info(f"Total candles: {len(sorted_dates)}")
+        self._log('info', f"Backtest period: {start_date} to {end_date}")
+        self._log('info', f"Total candles: {len(sorted_dates)}")
         
         # Apply warmup period if configured
         if hasattr(BacktestConfig, 'WARMUP_DATE'):
             warmup_date = BacktestConfig.WARMUP_DATE
-            logger.info(f"Warmup period: {start_date} to {warmup_date} (indicators only, no trading)")
-            logger.info(f"Trading period: {warmup_date} to {end_date}")
+            self._log('info', f"Warmup period: {start_date} to {warmup_date} (indicators only, no trading)")
+            self._log('info', f"Trading period: {warmup_date} to {end_date}")
         else:
             warmup_date = start_date
         
-        # Process each candle
-        for i, current_time in enumerate(sorted_dates):
-            if i % 1000 == 0:
-                logger.info(f"Processing: {current_time} ({i}/{len(sorted_dates)})")
-            
+        # Process each candle with progress bar
+        iterator = enumerate(sorted_dates)
+        if BacktestConfig.SHOW_PROGRESS_BAR and TQDM_AVAILABLE:
+            iterator = tqdm(iterator, total=len(sorted_dates), desc="Running backtest", unit="candles", leave=True, ncols=100)
+        
+        for i, current_time in iterator:
             # Daily reset
             self._check_daily_reset(current_time)
             
@@ -162,7 +185,7 @@ class BacktestEngine:
             can_trade, reason = self._can_trade(current_time)
             
             if not can_trade:
-                logger.debug(f"{current_time}: Trading disabled - {reason}")
+                self._log('debug', f"{current_time}: Trading disabled - {reason}")
                 continue
             
             # Scan for new signals
@@ -177,9 +200,9 @@ class BacktestEngine:
         # Calculate results
         results = self._calculate_results()
         
-        logger.info("="*70)
-        logger.info("BACKTEST COMPLETE")
-        logger.info("="*70)
+        self._log('info', "="*70)
+        self._log('info', "BACKTEST COMPLETE")
+        self._log('info', "="*70)
         
         return results
     
@@ -222,7 +245,7 @@ class BacktestEngine:
                     )
                     
                     if should_trigger and new_stop:
-                        logger.info(f"{current_time} {symbol}: 🛡️ Adaptive stop triggered: {reason} | New SL: ${new_stop:.2f}")
+                        self._log('info', f"{current_time} {symbol}: 🛡️ Adaptive stop triggered: {reason} | New SL: ${new_stop:.2f}")
                         
                         # Handle partial vs full protection
                         if BacktestConfig.ADAPTIVE_STOP_PARTIAL_PROTECTION:
@@ -250,7 +273,7 @@ class BacktestEngine:
             
             # Conservative mode: if both SL and TP hit in same candle, assume SL hit first
             if BacktestConfig.CONSERVATIVE_MODE and sl_hit and (tp1_hit or tp2_hit or tp3_hit):
-                logger.debug(f"{current_time} {symbol}: Both TP and SL hit - assuming SL (conservative)")
+                self._log('debug', f"{current_time} {symbol}: Both TP and SL hit - assuming SL (conservative)")
                 self._close_position(position, current_time, position.stop_loss, "stopped", sl_hit=True)
                 symbols_to_close.append(symbol)
                 continue
@@ -316,7 +339,7 @@ class BacktestEngine:
             # Move to breakeven
             position.stop_loss = position.entry_price
         
-        logger.debug(f"{current_time} {position.symbol}: {tp_level.upper()} hit | P&L: ${pnl:.2f}")
+        self._log('debug', f"{current_time} {position.symbol}: {tp_level.upper()} hit | P&L: ${pnl:.2f}")
         
         # If fully closed
         if position.remaining_percent <= 0:
@@ -388,11 +411,11 @@ class BacktestEngine:
             self.consecutive_losses += 1
             if self.consecutive_losses >= BacktestConfig.MAX_CONSECUTIVE_LOSSES:
                 self.cooldown_until = exit_time + timedelta(hours=BacktestConfig.COOLDOWN_HOURS)
-                logger.info(f"{exit_time}: Cooldown activated until {self.cooldown_until}")
+                self._log('info', f"{exit_time}: Cooldown activated until {self.cooldown_until}")
         else:
             self.consecutive_losses = 0
         
-        logger.info(f"{exit_time} {position.symbol}: Trade closed | {reason} | P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
+        self._log('info', f"{exit_time} {position.symbol}: Trade closed | {reason} | P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
     
     def _scan_for_signals(self, current_time: datetime):
         """Scan for new trading signals (uses EXACT live bot logic)"""
@@ -408,7 +431,7 @@ class BacktestEngine:
                 if btc_data:
                     # Validate BTC data has enough candles for indicators
                     if len(btc_data['htf']) < 200:
-                        logger.debug(f"{current_time}: Insufficient BTC data for regime check ({len(btc_data['htf'])} candles)")
+                        self._log('debug', f"{current_time}: Insufficient BTC data for regime check ({len(btc_data['htf'])} candles)")
                         btc_threshold_adj = 5  # Conservative default
                         btc_position_mult = 0.9
                         btc_max_signals_adj = 0
@@ -421,9 +444,9 @@ class BacktestEngine:
                         btc_position_mult = btc_regime_info['position_size_mult']
                         btc_max_signals_adj = btc_regime_info['max_signals_adj']
                         
-                        logger.debug(f"{current_time}: BTC Regime {btc_regime_info['regime']} - Threshold adj: +{btc_threshold_adj}, Position mult: {btc_position_mult:.2f}")
+                        self._log('debug', f"{current_time}: BTC Regime {btc_regime_info['regime']} - Threshold adj: +{btc_threshold_adj}, Position mult: {btc_position_mult:.2f}")
             except Exception as e:
-                logger.warning(f"BTC regime check failed: {e}, proceeding with defaults")
+                self._log('warning', f"BTC regime check failed: {e}, proceeding with defaults")
                 btc_threshold_adj = 5
                 btc_position_mult = 0.9
                 btc_max_signals_adj = 0
@@ -433,11 +456,12 @@ class BacktestEngine:
         adjusted_max_signals = max(1, BacktestConfig.MAX_TOTAL_ACTIVE_SIGNALS + btc_max_signals_adj)
         
         if current_signals >= adjusted_max_signals:
-            logger.debug(f"{current_time}: Max signals reached ({current_signals}/{adjusted_max_signals}) due to BTC regime")
+            self._log('debug', f"{current_time}: Max signals reached ({current_signals}/{adjusted_max_signals}) due to BTC regime")
             return
         
         # === PHASE 2: SCAN INDIVIDUAL SYMBOLS ===
-        for symbol in BacktestConfig.SYMBOLS:
+        # Scan all symbols in the loaded data
+        for symbol in self.data.keys():
             # Skip if position already exists
             if symbol in self.active_positions:
                 continue
@@ -458,7 +482,7 @@ class BacktestEngine:
                 if (len(data['htf']) < min_candles_needed or 
                     len(data['primary']) < min_candles_needed or 
                     len(data['entry']) < min_candles_needed):
-                    logger.debug(f"{current_time} {symbol}: Insufficient data (HTF: {len(data['htf'])}, Primary: {len(data['primary'])}, Entry: {len(data['entry'])})")
+                    self._log('debug', f"{current_time} {symbol}: Insufficient data (HTF: {len(data['htf'])}, Primary: {len(data['primary'])}, Entry: {len(data['entry'])})")
                     continue
                 
                 # Add indicators
@@ -498,7 +522,7 @@ class BacktestEngine:
                     self._create_position(symbol, 'short', data, current_time, reason, score, regime, btc_position_mult)
                 
             except Exception as e:
-                logger.error(f"Error scanning {symbol} at {current_time}: {e}")
+                self._log('error', f"Error scanning {symbol} at {current_time}: {e}")
     
     def _create_position(self, symbol: str, direction: str, data: Dict, entry_time: datetime, reason: str, score: int, regime: str, btc_position_mult: float = 1.0):
         """Create new position (on candle close) - MATCHES LIVE BOT LOGIC"""
@@ -539,7 +563,7 @@ class BacktestEngine:
             original_contracts = contracts
             contracts = max(1, int(contracts * btc_position_mult))
             margin_used = margin_used * btc_position_mult
-            logger.debug(f"{entry_time} {symbol}: BTC regime adjusted position: {original_contracts} → {contracts} contracts ({btc_position_mult:.1%} multiplier)")
+            self._log('debug', f"{entry_time} {symbol}: BTC regime adjusted position: {original_contracts} → {contracts} contracts ({btc_position_mult:.1%} multiplier)")
         
         # Entry fee
         entry_value = entry_price * contracts
@@ -571,7 +595,7 @@ class BacktestEngine:
         
         self.active_positions[symbol] = position
         
-        logger.info(f"{entry_time} {symbol}: {direction.upper()} entry | Price: ${entry_price:.2f} | Score: {score} | Regime: {regime}")
+        self._log('info', f"{entry_time} {symbol}: {direction.upper()} entry | Price: ${entry_price:.2f} | Score: {score} | Regime: {regime}")
     
     def _get_mtf_data(self, symbol: str, current_time: datetime) -> Optional[Dict]:
         """Get multi-timeframe data up to current_time (NO FUTURE DATA)"""
@@ -599,7 +623,7 @@ class BacktestEngine:
             }
             
         except Exception as e:
-            logger.error(f"Error getting MTF data for {symbol}: {e}")
+            self._log('error', f"Error getting MTF data for {symbol}: {e}")
             return None
     
     def _can_trade(self, current_time: datetime) -> Tuple[bool, str]:

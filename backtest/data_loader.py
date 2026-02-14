@@ -24,6 +24,19 @@ class BinanceDataLoader:
                 "Run backtest/download_binance_data.py to download historical data"
             )
     
+    def _log(self, level: str, message: str):
+        """Log message if logging is enabled"""
+        from backtest.config import BacktestConfig
+        if BacktestConfig.ENABLE_LOGGING:
+            if level == 'debug':
+                logger.debug(message)
+            elif level == 'info':
+                logger.info(message)
+            elif level == 'warning':
+                logger.warning(message)
+            elif level == 'error':
+                logger.error(message)
+    
     def load_symbol_data(
         self,
         symbol: str,
@@ -48,13 +61,13 @@ class BinanceDataLoader:
         files = list(self.data_dir.glob(pattern))
         
         if not files:
-            logger.warning(f"No data file found for {symbol} {timeframe}")
+            self._log('warning', f"No data file found for {symbol} {timeframe}")
             return pd.DataFrame()
         
         # Use the first matching file (should only be one)
         filepath = files[0]
         
-        logger.debug(f"Loading {filepath.name}")
+        self._log('debug', f"Loading {filepath.name}")
         
         # Read CSV
         df = pd.read_csv(filepath, index_col=0, parse_dates=True)
@@ -66,7 +79,7 @@ class BinanceDataLoader:
         if end_date is not None:
             df = df[df.index <= end_date]
         
-        logger.debug(f"Loaded {len(df)} candles for {symbol} {timeframe}")
+        self._log('debug', f"Loaded {len(df)} candles for {symbol} {timeframe}")
         
         return df
     
@@ -92,7 +105,7 @@ class BinanceDataLoader:
         all_data = {}
         
         for symbol in symbols:
-            logger.info(f"Loading {symbol} data...")
+            self._log('info', f"Loading {symbol} data...")
             all_data[symbol] = {}
             
             for timeframe in timeframes:
@@ -105,9 +118,9 @@ class BinanceDataLoader:
                 
                 if not df.empty:
                     all_data[symbol][timeframe] = df
-                    logger.info(f"  {timeframe}: {len(df)} candles")
+                    self._log('info', f"  {timeframe}: {len(df)} candles")
                 else:
-                    logger.warning(f"  {timeframe}: No data")
+                    self._log('warning', f"  {timeframe}: No data")
         
         return all_data
 
@@ -118,7 +131,9 @@ class HistoricalDataFetcher:
     
     def __init__(self):
         self.loader = BinanceDataLoader()
-        logger.info("Using Binance historical data (downloaded CSV files)")
+        from backtest.config import BacktestConfig
+        if BacktestConfig.ENABLE_LOGGING:
+            logger.info("Using Binance historical data (downloaded CSV files)")
     
     def fetch_all_data(
         self,
@@ -129,7 +144,9 @@ class HistoricalDataFetcher:
         force_refresh: bool = False
     ) -> dict:
         """Load data (compatible with old API)"""
-        logger.info(f"Loading data from {start_date.date()} to {end_date.date()}")
+        from backtest.config import BacktestConfig
+        if BacktestConfig.ENABLE_LOGGING:
+            logger.info(f"Loading data from {start_date.date()} to {end_date.date()}")
         
         return self.loader.load_all_data(
             symbols=symbols,
@@ -146,10 +163,11 @@ class HistoricalDataFetcher:
         """Load data for all symbols (compatible with old API)"""
         from backtest.config import BacktestConfig
         
-        logger.info(f"Loading data from {BacktestConfig.START_DATE.date()} to {BacktestConfig.END_DATE.date()}")
+        if BacktestConfig.ENABLE_LOGGING:
+            logger.info(f"Loading data from {BacktestConfig.START_DATE.date()} to {BacktestConfig.END_DATE.date()}")
         
         return self.loader.load_all_data(
-            symbols=BacktestConfig.SYMBOLS,
+            symbols=BacktestConfig.get_symbols(),
             timeframes=timeframes,
             start_date=BacktestConfig.START_DATE,
             end_date=BacktestConfig.END_DATE

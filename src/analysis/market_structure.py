@@ -18,13 +18,42 @@ class MarketStructure:
             ema_50 = df['ema_50'].iloc[-1]
             ema_200 = df['ema_200'].iloc[-1]
             
-            # Bullish: Price > EMA21 > EMA50 > EMA200
+            # === BULLISH CONDITIONS ===
+            # Strong bullish: Perfect EMA order
             if last_price > ema_21 and ema_21 > ema_50 and ema_50 > ema_200:
                 return 'bullish'
             
-            # Bearish: Price < EMA21 < EMA50 < EMA200
+            # Bullish with momentum: Price and EMA21 above EMA50, even if EMA50 hasn't crossed EMA200 yet
+            # This catches strong bullish moves where fast EMAs respond but slow ones lag
+            elif last_price > ema_21 and last_price > ema_50 and ema_21 > ema_50:
+                # Verify it's not just a spike - check EMA21 is meaningfully above EMA50
+                ema21_above_ema50 = (ema_21 - ema_50) / ema_50
+                if ema21_above_ema50 > 0.005:  # EMA21 > 0.5% above EMA50
+                    return 'bullish'
+            
+            # Bullish with strong price action: Price significantly above all EMAs
+            elif last_price > ema_21 and last_price > ema_50 and last_price > ema_200:
+                # Check if price is strongly above (indicates momentum)
+                price_above_ema200 = (last_price - ema_200) / ema_200
+                if price_above_ema200 > 0.02:  # Price > 2% above EMA200
+                    return 'bullish'
+            
+            # === BEARISH CONDITIONS ===
+            # Strong bearish: Perfect EMA order
             elif last_price < ema_21 and ema_21 < ema_50 and ema_50 < ema_200:
                 return 'bearish'
+            
+            # Bearish with momentum: Price and EMA21 below EMA50
+            elif last_price < ema_21 and last_price < ema_50 and ema_21 < ema_50:
+                ema21_below_ema50 = (ema_50 - ema_21) / ema_50
+                if ema21_below_ema50 > 0.005:  # EMA21 > 0.5% below EMA50
+                    return 'bearish'
+            
+            # Bearish with strong price action: Price significantly below all EMAs
+            elif last_price < ema_21 and last_price < ema_50 and last_price < ema_200:
+                price_below_ema200 = (ema_200 - last_price) / ema_200
+                if price_below_ema200 > 0.02:  # Price > 2% below EMA200
+                    return 'bearish'
             
             # Neutral/Mixed
             else:

@@ -16,9 +16,9 @@ class BacktestConfig:
     # Historical data from Binance: 2021-2024 (4 years)
     # For 15-20 minute backtest, use 6 months of data
     # Add 1 month warmup period for indicators (200+ candles needed for EMA200)
-    START_DATE = datetime(2024, 5, 1)  # Start 1 month earlier for warmup
-    WARMUP_DATE = datetime(2024, 6, 1)  # Begin actual backtest here (after warmup)
-    END_DATE = datetime(2024, 12, 31)
+    START_DATE = datetime(2025, 5, 1)  # Start 1 month earlier for warmup
+    WARMUP_DATE = datetime(2025, 6, 1)  # Begin actual backtest here (after warmup)
+    END_DATE = datetime(2025, 8, 1)
     
     # ==================== INITIAL CONDITIONS ====================
     INITIAL_CAPITAL = Config.INITIAL_CAPITAL  # Use live bot capital
@@ -37,13 +37,60 @@ class BacktestConfig:
     CONSERVATIVE_MODE = True  # True = assume SL hit first (worst case)
     
     # ==================== TRADING PAIRS ====================
-    # Use only symbols with available data in backtest/data_binance/
-    # Missing: AAVEUSDT, UNIUSDT, TRXUSDT, TONUSDT, APTUSDT
-    SYMBOLS = [
-        'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 
-        'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'DOGEUSDT', 'HBARUSDT',
-        'XLMUSDT', 'SUIUSDT'
-    ]
+    # Dynamically determined based on available data for date range
+    # Set to None to auto-detect all available symbols, or provide a list to filter
+    SYMBOLS = None  # Auto-detect all available symbols
+    
+    # Optional: Restrict to specific symbols (None = use all available)
+    SYMBOL_FILTER = None  # e.g., ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] or None for all
+    
+    # Cache for dynamically loaded symbols
+    _symbols_cache = None
+    
+    @classmethod
+    def get_symbols(cls):
+        """Get list of symbols with complete data coverage for backtest period"""
+        # Return cached value if already computed
+        if cls._symbols_cache is not None:
+            return cls._symbols_cache
+        
+        # If SYMBOLS is explicitly set (not None), use it
+        if cls.SYMBOLS is not None:
+            cls._symbols_cache = cls.SYMBOLS
+            return cls._symbols_cache
+        
+        # Dynamically determine available symbols
+        try:
+            from backtest.check_data_availability import DataAvailabilityChecker
+            checker = DataAvailabilityChecker()
+            
+            available_symbols = checker.get_available_symbols_for_range(
+                start_date=cls.START_DATE,
+                end_date=cls.END_DATE,
+                timeframes=[
+                    cls.HTF_TIMEFRAME,
+                    cls.PRIMARY_TIMEFRAME,
+                    cls.ENTRY_TIMEFRAME
+                ]
+            )
+            
+            # Apply filter if specified
+            if cls.SYMBOL_FILTER is not None:
+                available_symbols = [s for s in cls.SYMBOL_FILTER if s in available_symbols]
+            
+            cls._symbols_cache = available_symbols
+            return cls._symbols_cache
+            
+        except Exception as e:
+            # Fallback to a default list if checker fails
+            print(f"Warning: Could not auto-detect symbols ({e}), using fallback list")
+            fallback = [
+                'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 
+                'ADAUSDT', 'LINKUSDT', 'AVAXUSDT', 'DOGEUSDT', 'HBARUSDT',
+                'XLMUSDT', 'SUIUSDT'
+            ]
+            cls._symbols_cache = fallback
+            return cls._symbols_cache
     
     # ==================== TIMEFRAMES ====================
     # Must match live bot
@@ -62,7 +109,7 @@ class BacktestConfig:
     MAX_DAILY_LOSS = Config.MAX_DAILY_LOSS
     MAX_WEEKLY_LOSS = Config.MAX_WEEKLY_LOSS
     MAX_CONSECUTIVE_LOSSES = Config.MAX_CONSECUTIVE_LOSSES
-    MAX_TOTAL_ACTIVE_SIGNALS = 3  # Same as live bot
+    MAX_TOTAL_ACTIVE_SIGNALS = 4  # Same as live bot
     COOLDOWN_HOURS = 12  # After max consecutive losses
     
     # ==================== ADAPTIVE STOP PARAMETERS ====================
@@ -82,10 +129,12 @@ class BacktestConfig:
     ENABLE_WALK_FORWARD = False  # Disabled by default
     
     # ==================== LOGGING ====================
+    ENABLE_LOGGING = False  # Set to False to disable all logging for faster backtest
     LOG_LEVEL = 'INFO'  # 'DEBUG' for detailed candle-by-candle
     SAVE_EQUITY_CURVE = True
     SAVE_TRADE_LOG = True
     SAVE_METRICS = True
+    SHOW_PROGRESS_BAR = True  # Show progress bar during backtest
     
     # ==================== OUTPUT ====================
     RESULTS_DIR = 'backtest/results'

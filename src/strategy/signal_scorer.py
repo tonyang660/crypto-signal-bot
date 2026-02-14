@@ -103,25 +103,42 @@ class SignalScorer:
             # === 3. RSI Quality (0-12 points) ===
             rsi = primary_df['rsi'].iloc[-1]
             
+            # Get HTF trend for context-aware RSI scoring
+            htf_trend_for_rsi = MarketStructure.get_trend_direction(htf_df)
+            
             if direction == 'long':
-                # Long entries: RSI should be oversold to neutral (not overbought)
-                if 30 <= rsi <= 50:  # Sweet spot: reset but not overbought
-                    score += 12
-                elif 50 < rsi <= 60:  # Acceptable
-                    score += 8
-                elif 25 <= rsi < 30 or 60 < rsi <= 65:  # Marginal
-                    score += 4
-                # RSI > 70 or < 25 = 0 points (too extreme)
+                # During strong bullish trends, higher RSI is normal and acceptable
+                if htf_trend_for_rsi == 'bullish':
+                    if 40 <= rsi <= 65:
+                        score += 12
+                    elif 30 <= rsi < 40 or 65 < rsi <= 72:
+                        score += 8
+                    elif 25 <= rsi < 30 or 72 < rsi <= 78:
+                        score += 4
+                else:
+                    if 30 <= rsi <= 50:
+                        score += 12
+                    elif 50 < rsi <= 60:
+                        score += 8
+                    elif 25 <= rsi < 30 or 60 < rsi <= 65:
+                        score += 4
             
             elif direction == 'short':
-                # Short entries: RSI should be overbought to neutral (not oversold)
-                if 50 <= rsi <= 70:  # Sweet spot: extended but not oversold
-                    score += 12
-                elif 40 <= rsi < 50:  # Acceptable
-                    score += 8
-                elif 35 <= rsi < 40 or 70 < rsi <= 75:  # Marginal
-                    score += 4
-                # RSI < 30 or > 75 = 0 points (too extreme)
+                # During strong bearish trends, lower RSI is normal and acceptable
+                if htf_trend_for_rsi == 'bearish':
+                    if 35 <= rsi <= 60:
+                        score += 12
+                    elif 28 <= rsi < 35 or 60 < rsi <= 70:
+                        score += 8
+                    elif 22 <= rsi < 28 or 70 < rsi <= 75:
+                        score += 4
+                else:
+                    if 50 <= rsi <= 70:
+                        score += 12
+                    elif 40 <= rsi < 50:
+                        score += 8
+                    elif 35 <= rsi < 40 or 70 < rsi <= 75:
+                        score += 4
             
             # === 4. Entry Location Quality (0-20 points) ===
             price = entry_df['close'].iloc[-1]
@@ -323,37 +340,78 @@ class SignalScorer:
             # === 3. RSI Quality (0-12 points) ===
             rsi = primary_df['rsi'].iloc[-1]
             
+            # Get HTF trend for context-aware RSI scoring
+            htf_trend_for_rsi = MarketStructure.get_trend_direction(htf_df)
+            
             if direction == 'long':
-                if 30 <= rsi <= 50:
-                    breakdown['rsi_quality']['points'] = 12
-                    breakdown['rsi_quality']['details'] = f'Optimal RSI for long ({rsi:.1f})'
-                    score += 12
-                elif 50 < rsi <= 60:
-                    breakdown['rsi_quality']['points'] = 8
-                    breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
-                    score += 8
-                elif 25 <= rsi < 30 or 60 < rsi <= 65:
-                    breakdown['rsi_quality']['points'] = 4
-                    breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
-                    score += 4
+                # During strong bullish trends, higher RSI is normal and acceptable
+                if htf_trend_for_rsi == 'bullish':
+                    # In bullish trends, embrace momentum - higher RSI is okay
+                    if 40 <= rsi <= 65:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Optimal RSI for long in bullish trend ({rsi:.1f})'
+                        score += 12
+                    elif 30 <= rsi < 40 or 65 < rsi <= 72:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI in bullish trend ({rsi:.1f})'
+                        score += 8
+                    elif 25 <= rsi < 30 or 72 < rsi <= 78:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Extreme RSI for long ({rsi:.1f})'
                 else:
-                    breakdown['rsi_quality']['details'] = f'Poor RSI for long ({rsi:.1f})'
+                    # In neutral/bearish trends, prefer lower RSI (reversal plays)
+                    if 30 <= rsi <= 50:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Optimal RSI for long ({rsi:.1f})'
+                        score += 12
+                    elif 50 < rsi <= 60:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
+                        score += 8
+                    elif 25 <= rsi < 30 or 60 < rsi <= 65:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Poor RSI for long ({rsi:.1f})'
             
             elif direction == 'short':
-                if 50 <= rsi <= 70:
-                    breakdown['rsi_quality']['points'] = 12
-                    breakdown['rsi_quality']['details'] = f'Optimal RSI for short ({rsi:.1f})'
-                    score += 12
-                elif 40 <= rsi < 50:
-                    breakdown['rsi_quality']['points'] = 8
-                    breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
-                    score += 8
-                elif 35 <= rsi < 40 or 70 < rsi <= 75:
-                    breakdown['rsi_quality']['points'] = 4
-                    breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
-                    score += 4
+                # During strong bearish trends, lower RSI is normal and acceptable
+                if htf_trend_for_rsi == 'bearish':
+                    # In bearish trends, embrace downward momentum - lower RSI is okay
+                    if 35 <= rsi <= 60:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Optimal RSI for short in bearish trend ({rsi:.1f})'
+                        score += 12
+                    elif 28 <= rsi < 35 or 60 < rsi <= 70:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI in bearish trend ({rsi:.1f})'
+                        score += 8
+                    elif 22 <= rsi < 28 or 70 < rsi <= 75:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Extreme RSI for short ({rsi:.1f})'
                 else:
-                    breakdown['rsi_quality']['details'] = f'Poor RSI for short ({rsi:.1f})'
+                    # In neutral/bullish trends, prefer higher RSI (reversal plays)
+                    if 50 <= rsi <= 70:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Optimal RSI for short ({rsi:.1f})'
+                        score += 12
+                    elif 40 <= rsi < 50:
+                        breakdown['rsi_quality']['points'] = 8
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI ({rsi:.1f})'
+                        score += 8
+                    elif 35 <= rsi < 40 or 70 < rsi <= 75:
+                        breakdown['rsi_quality']['points'] = 4
+                        breakdown['rsi_quality']['details'] = f'Marginal RSI ({rsi:.1f})'
+                        score += 4
+                    else:
+                        breakdown['rsi_quality']['details'] = f'Poor RSI for short ({rsi:.1f})'
             
             # === 4. Entry Location Quality (0-20 points) ===
             price = entry_df['close'].iloc[-1]

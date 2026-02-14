@@ -79,7 +79,7 @@ def run_walk_forward():
     fetcher = HistoricalDataFetcher()
     
     data = fetcher.fetch_all_data(
-        symbols=BacktestConfig.SYMBOLS,
+        symbols=BacktestConfig.get_symbols(),
         start_date=BacktestConfig.START_DATE,
         end_date=BacktestConfig.END_DATE,
         timeframes=[
