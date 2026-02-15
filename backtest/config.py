@@ -34,12 +34,12 @@ class BacktestConfig:
     STOP_LOSS_SLIPPAGE = 0.1  # Extra slippage on stop losses (0.1%)
     
     # Conservative execution - if candle hits both TP and SL
-    CONSERVATIVE_MODE = True  # True = assume SL hit first (worst case)
+    CONSERVATIVE_MODE = False  # True = assume SL hit first (worst case)
     
     # ==================== TRADING PAIRS ====================
     # Dynamically determined based on available data for date range
     # Set to None to auto-detect all available symbols, or provide a list to filter
-    SYMBOLS = None  # Auto-detect all available symbols
+    SYMBOLS = Config.TRADING_PAIRS # Auto-detect all available symbols
     
     # Optional: Restrict to specific symbols (None = use all available)
     SYMBOL_FILTER = None  # e.g., ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] or None for all

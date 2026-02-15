@@ -327,7 +327,6 @@ def main():
         'ARBUSDT',      # Newer (2023+)
         
         # Privacy & older coins
-        'XMRUSDT',      # May have limited data (delisted from some exchanges)
         'ZECUSDT',
         'HBARUSDT',
         
