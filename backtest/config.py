@@ -16,9 +16,9 @@ class BacktestConfig:
     # Historical data from Binance: 2021-2024 (4 years)
     # For 15-20 minute backtest, use 6 months of data
     # Add 1 month warmup period for indicators (200+ candles needed for EMA200)
-    START_DATE = datetime(2025, 5, 1)  # Start 1 month earlier for warmup
-    WARMUP_DATE = datetime(2025, 6, 1)  # Begin actual backtest here (after warmup)
-    END_DATE = datetime(2025, 8, 1)
+    START_DATE = datetime(2024, 12, 15)  # Start 1 month earlier for warmup
+    WARMUP_DATE = datetime(2025, 1, 1)  # Begin actual backtest here (after warmup)
+    END_DATE = datetime(2025, 12, 1)
     
     # ==================== INITIAL CONDITIONS ====================
     INITIAL_CAPITAL = Config.INITIAL_CAPITAL  # Use live bot capital

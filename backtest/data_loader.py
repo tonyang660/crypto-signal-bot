@@ -64,8 +64,10 @@ class BinanceDataLoader:
             self._log('warning', f"No data file found for {symbol} {timeframe}")
             return pd.DataFrame()
         
-        # Use the first matching file (should only be one)
-        filepath = files[0]
+        # If multiple files exist, sort and use the most recent one (last alphabetically)
+        # e.g., BTCUSDT_5m_20210101_20260131.csv is newer than BTCUSDT_5m_20210101_20241231.csv
+        files.sort()
+        filepath = files[-1]  # Use the most recent file
         
         self._log('debug', f"Loading {filepath.name}")
         

@@ -307,7 +307,6 @@ def main():
         'BNBUSDT',
         'XRPUSDT',
         'SOLUSDT',
-        'TRXUSDT',
         'DOGEUSDT',
         'ADAUSDT',
         
@@ -321,7 +320,8 @@ def main():
         'DOTUSDT',
         'UNIUSDT',
         'APTUSDT',      # Newer (2022+)
-        'ALGOUSDT',
+        'NEARUSDT',
+        'SEIUSDT',
         'FILUSDT',
         'VETUSDT',
         'ARBUSDT',      # Newer (2023+)

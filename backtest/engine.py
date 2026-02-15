@@ -99,6 +99,12 @@ class BacktestEngine:
         self.closed_trades: List[Trade] = []
         self.equity_curve: List[Tuple[datetime, float]] = []
         
+        # Session tracking
+        self.long_trades_count = 0
+        self.short_trades_count = 0
+        self.long_trades_pnl = 0.0
+        self.short_trades_pnl = 0.0
+        
         # Risk management state
         self.daily_pnl = 0.0
         self.weekly_pnl = 0.0
@@ -762,6 +768,21 @@ class BacktestEngine:
         wins = trades_df[trades_df['pnl'] > 0]
         losses = trades_df[trades_df['pnl'] <= 0]
         
+        # Directional bias tracking
+        long_trades = trades_df[trades_df['direction'] == 'long']
+        short_trades = trades_df[trades_df['direction'] == 'short']
+        
+        long_count = len(long_trades)
+        short_count = len(short_trades)
+        long_pnl = long_trades['pnl'].sum() if len(long_trades) > 0 else 0
+        short_pnl = short_trades['pnl'].sum() if len(short_trades) > 0 else 0
+        
+        long_win_rate = (len(long_trades[long_trades['pnl'] > 0]) / long_count * 100) if long_count > 0 else 0
+        short_win_rate = (len(short_trades[short_trades['pnl'] > 0]) / short_count * 100) if short_count > 0 else 0
+        
+        long_avg_pnl = long_trades['pnl'].mean() if len(long_trades) > 0 else 0
+        short_avg_pnl = short_trades['pnl'].mean() if len(short_trades) > 0 else 0
+        
         win_count = len(wins)
         loss_count = len(losses)
         win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
@@ -826,6 +847,16 @@ class BacktestEngine:
             'final_equity': round(final_equity, 2),
             'total_fees_paid': round(self.total_fees_paid, 2),
             'avg_duration_hours': round(trades_df['duration_hours'].mean(), 2),
+            # Session tracking - directional bias
+            'long_trades': long_count,
+            'short_trades': short_count,
+            'long_short_ratio': round(long_count / short_count, 2) if short_count > 0 else float('inf'),
+            'long_pnl': round(long_pnl, 2),
+            'short_pnl': round(short_pnl, 2),
+            'long_win_rate': round(long_win_rate, 2),
+            'short_win_rate': round(short_win_rate, 2),
+            'long_avg_pnl': round(long_avg_pnl, 2),
+            'short_avg_pnl': round(short_avg_pnl, 2),
             'trades_by_regime': trades_df.groupby('regime')['pnl'].agg(['count', 'sum', 'mean']).to_dict(),
             'trades_by_symbol': trades_df.groupby('symbol')['pnl'].agg(['count', 'sum', 'mean']).to_dict(),
             'trades_by_exit_reason': trades_df.groupby('exit_reason')['pnl'].agg(['count', 'sum']).to_dict()

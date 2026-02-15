@@ -115,6 +115,14 @@ def print_results(results: dict, engine: BacktestEngine):
     print(f"  Losses:             {results['losses']} ({100-results['win_rate']:.1f}%)")
     print(f"  Win Rate:           {results['win_rate']:.2f}%")
     
+    # Session tracking - directional bias
+    print("\n🎯 DIRECTIONAL BIAS:")
+    print(f"  Long Trades:        {results['long_trades']} ({results['long_trades']/results['total_trades']*100:.1f}%)")
+    print(f"  Short Trades:       {results['short_trades']} ({results['short_trades']/results['total_trades']*100:.1f}%)")
+    print(f"  Long/Short Ratio:   {results['long_short_ratio']:.2f}")
+    print(f"  Long P&L:           ${results['long_pnl']:+,.2f} | Avg: ${results['long_avg_pnl']:+.2f} | Win Rate: {results['long_win_rate']:.1f}%")
+    print(f"  Short P&L:          ${results['short_pnl']:+,.2f} | Avg: ${results['short_avg_pnl']:+.2f} | Win Rate: {results['short_win_rate']:.1f}%")
+    
     # Quality metrics
     print("\n⚡ QUALITY METRICS:")
     print(f"  Profit Factor:      {results['profit_factor']:.2f}")
@@ -164,6 +172,15 @@ def print_results(results: dict, engine: BacktestEngine):
 
 def save_results(results: dict, engine: BacktestEngine, symbols: list):
     """Save results to JSON file"""
+    # Check for symbols with no trades
+    symbols_traded = set(results['trades_by_symbol']['count'].keys())
+    symbols_with_no_trades = sorted(set(symbols) - symbols_traded)
+    
+    if symbols_with_no_trades:
+        print(f"\n⚠️  SYMBOLS WITH NO TRADES ({len(symbols_with_no_trades)}):")
+        print(f"  {', '.join(symbols_with_no_trades)}")
+        print(f"  Note: These symbols had data loaded but generated no trades above the 75-point threshold")
+    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"backtest_{timestamp}.json"
     filepath = Path(__file__).parent / 'results' / filename
