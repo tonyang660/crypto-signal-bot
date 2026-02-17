@@ -408,7 +408,7 @@ class SignalTracker:
         - main.py records ONLY 'remaining_pnl' to risk_manager (partial TPs already recorded)
         - This prevents duplicate PnL additions
         - Total trade PnL is the sum of all partial exits + final exit
-        \"\"\"
+        """
         signal = self.active_signals[symbol]
         
         # Check if partial protection is active (50% at breakeven, 50% at original stop)

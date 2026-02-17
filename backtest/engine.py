@@ -110,7 +110,12 @@ class BacktestEngine:
         self.weekly_pnl = 0.0
         self.consecutive_losses = 0
         self.cooldown_until: Optional[datetime] = None
+        self.weekly_cooldown_until: Optional[datetime] = None
         self.last_reset_date: Optional[datetime] = None
+        
+        # Threshold penalties
+        self.daily_threshold_penalty = 0
+        self.weekly_threshold_penalty = 0
         
         # Statistics
         self.total_fees_paid = 0.0
@@ -474,6 +479,14 @@ class BacktestEngine:
         else:
             self.consecutive_losses = 0
         
+        # Check if weekly loss limit hit - activate 12-hour cooldown
+        if BacktestConfig.MAX_WEEKLY_LOSS and self.weekly_pnl < 0:
+            weekly_loss_pct = abs(self.weekly_pnl / self.equity)
+            if weekly_loss_pct >= BacktestConfig.MAX_WEEKLY_LOSS and not self.weekly_cooldown_until:
+                self.weekly_cooldown_until = exit_time + timedelta(hours=12)  # 12-hour cooldown
+                self.weekly_threshold_penalty = 5  # +5 threshold penalty
+                self._log('info', f"{exit_time}: 12-hour weekly cooldown activated until {self.weekly_cooldown_until} | Threshold +5")
+        
         self._log('info', f"{exit_time} {position.symbol}: Trade closed | {reason} | Total P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
     
     def _scan_for_signals(self, current_time: datetime):
@@ -813,6 +826,8 @@ class BacktestEngine:
             # Weekly reset (Monday)
             if current_time.weekday() == 0:
                 self.weekly_pnl = 0.0
+                self.weekly_cooldown_until = None
+                self.weekly_threshold_penalty = 0
     
     def _close_all_positions(self, end_time: datetime, reason: str):
         """Close all remaining positions at end of backtest"""
