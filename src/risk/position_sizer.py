@@ -69,8 +69,12 @@ class PositionSizer:
             Dict with contracts, notional value, leverage, risk amount, margin used
         """
         try:
-            # Fixed risk per trade (1% = $20 for $2000 account)
-            risk_amount = account_equity * Config.RISK_PER_TRADE
+            # Get dynamic risk parameters based on current equity
+            risk_params = Config.get_dynamic_risk_params(account_equity)
+            risk_per_trade = risk_params['risk_per_trade']
+            
+            # Calculate risk amount dynamically
+            risk_amount = account_equity * risk_per_trade
             
             # Stop distance as percentage (market risk)
             stop_distance_pct = abs(entry_price - stop_loss) / entry_price
@@ -140,7 +144,7 @@ class PositionSizer:
             
             logger.info(f"{symbol}: {timeframe.upper()} | Position ${position_size_usd:.2f} @ {isolated_leverage:.1f}× | "
                        f"Margin: ${margin_required:.2f} ({margin_percent:.1f}%) | "
-                       f"Risk: ${risk_amount:.2f} | Stop: {stop_distance_pct*100:.2f}%")
+                       f"Risk: ${risk_amount:.2f} ({risk_per_trade*100:.2f}%) | Stop: {stop_distance_pct*100:.2f}%")
             
             return {
                 'contracts': round(contracts, 6),

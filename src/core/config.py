@@ -21,11 +21,66 @@ class Config:
     
     # ==================== CAPITAL & RISK ====================
     INITIAL_CAPITAL = float(os.getenv('INITIAL_CAPITAL', '2000') or 2000)
-    RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.01') or 0.01)  # 1%
-    MAX_DAILY_LOSS = float(os.getenv('MAX_DAILY_LOSS', '0.02') or 0.02)  # 2%
-    MAX_WEEKLY_LOSS = float(os.getenv('MAX_WEEKLY_LOSS', '0.06') or 0.06)  # 6%
+    
+    # Dynamic risk management based on capital tiers
+    # These are baseline values - actual values are calculated dynamically
+    RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.01') or 0.01)  # Baseline: 1%
+    MAX_DAILY_LOSS = float(os.getenv('MAX_DAILY_LOSS', '0.02') or 0.02)  # Baseline: 2%
+    MAX_WEEKLY_LOSS = float(os.getenv('MAX_WEEKLY_LOSS', '0.06') or 0.06)  # Baseline: 6%
     MAX_LEVERAGE = float(os.getenv('MAX_LEVERAGE', '15.0') or 15.0)
     MAX_CONSECUTIVE_LOSSES = 3
+    
+    @staticmethod
+    def get_dynamic_risk_params(equity: float) -> dict:
+        """
+        Calculate dynamic risk parameters based on capital tier
+        
+        Equity <3000$: 1.0% risk/trade, 2.0% daily loss, 6.0% weekly loss
+        3000-5000$: 0.8% risk/trade, 1.6% daily loss, 5.0% weekly loss
+        5000-7000$: 0.7% risk/trade, 1.4% daily loss, 4.5% weekly loss
+        7000-10,000$: 0.6% risk/trade, 1.2% daily loss, 4.2% weekly loss
+        10,000-20,000$: 0.5% risk/trade, 1.0% daily loss, 3.9% weekly loss
+        20,000+: 0.4% risk/trade, 1.0% daily loss, 3.6% weekly loss
+        
+        Returns:
+            dict with 'risk_per_trade', 'max_daily_loss', 'max_weekly_loss'
+        """
+        if equity < 3000:
+            return {
+                'risk_per_trade': 0.010,  # 1.0%
+                'max_daily_loss': 0.020,  # 2.0%
+                'max_weekly_loss': 0.060  # 6.0%
+            }
+        elif equity < 5000:
+            return {
+                'risk_per_trade': 0.008,  # 0.8%
+                'max_daily_loss': 0.016,  # 1.6%
+                'max_weekly_loss': 0.050  # 5.0%
+            }
+        elif equity < 7000:
+            return {
+                'risk_per_trade': 0.007,  # 0.7%
+                'max_daily_loss': 0.014,  # 1.4%
+                'max_weekly_loss': 0.045  # 4.5%
+            }
+        elif equity < 10000:
+            return {
+                'risk_per_trade': 0.006,  # 0.6%
+                'max_daily_loss': 0.012,  # 1.2%
+                'max_weekly_loss': 0.042  # 4.2%
+            }
+        elif equity < 20000:
+            return {
+                'risk_per_trade': 0.005,  # 0.5%
+                'max_daily_loss': 0.010,  # 1.0%
+                'max_weekly_loss': 0.039  # 3.9%
+            }
+        else:  # 20,000+
+            return {
+                'risk_per_trade': 0.004,  # 0.4%
+                'max_daily_loss': 0.010,  # 1.0%
+                'max_weekly_loss': 0.036  # 3.6%
+            }
     
     # ==================== TRADING PAIRS ====================
     TRADING_PAIRS: List[str] = os.getenv(
@@ -151,8 +206,9 @@ class Config:
         if not cls.DISCORD_WEBHOOK_URL:
             errors.append("DISCORD_WEBHOOK_URL not set")
         
+        # Note: RISK_PER_TRADE is now dynamic based on equity, so we validate the baseline value
         if not (0 < cls.RISK_PER_TRADE <= 0.02):
-            errors.append("RISK_PER_TRADE must be between 0 and 2%")
+            errors.append("Base RISK_PER_TRADE must be between 0 and 2% (dynamic calculation applies)")
         
         if cls.MAX_LEVERAGE > 15:
             errors.append(f"MAX_LEVERAGE should not exceed 15× (currently: {cls.MAX_LEVERAGE})")
@@ -167,7 +223,22 @@ class Config:
         if errors:
             raise ValueError(f"Configuration errors:\n" + "\n".join(f"  - {e}" for e in errors))
         
+        # Display dynamic risk tiers
         print("✓ Configuration validated successfully")
         print(f"  - Trading pairs: {', '.join(cls.TRADING_PAIRS)}")
-        print(f"  - Risk per trade: {cls.RISK_PER_TRADE * 100}%")
-        print(f"  - Max leverage: {cls.MAX_LEVERAGE}×")
+        print(f"  - Initial capital: ${cls.INITIAL_CAPITAL:,.2f}")
+        print(f"\nDynamic Risk Management Tiers:")
+        print("  Equity <$3,000:     1.0% risk/trade, 2.0% daily loss, 6.0% weekly loss")
+        print("  $3,000-$5,000:      0.8% risk/trade, 1.6% daily loss, 5.0% weekly loss")
+        print("  $5,000-$7,000:      0.7% risk/trade, 1.4% daily loss, 4.5% weekly loss")
+        print("  $7,000-$10,000:     0.6% risk/trade, 1.2% daily loss, 4.2% weekly loss")
+        print("  $10,000-$20,000:    0.5% risk/trade, 1.0% daily loss, 3.9% weekly loss")
+        print("  $20,000+:           0.4% risk/trade, 1.0% daily loss, 3.6% weekly loss")
+        
+        # Show current tier
+        current_params = cls.get_dynamic_risk_params(cls.INITIAL_CAPITAL)
+        print(f"\nCurrent tier (${cls.INITIAL_CAPITAL:,.2f}):")
+        print(f"  Risk per trade: {current_params['risk_per_trade']*100:.1f}%")
+        print(f"  Max daily loss: {current_params['max_daily_loss']*100:.1f}%")
+        print(f"  Max weekly loss: {current_params['max_weekly_loss']*100:.1f}%")
+        print(f"  Max leverage: {cls.MAX_LEVERAGE}×")

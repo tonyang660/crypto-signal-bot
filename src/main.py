@@ -224,6 +224,12 @@ class SignalBot:
             # Apply BTC regime adjustment to threshold
             threshold = base_threshold + btc_threshold_adj
             
+            # Apply cooldown penalty adjustment to threshold
+            cooldown_penalty = self.risk_manager.get_threshold_adjustment()
+            if cooldown_penalty > 0:
+                threshold += cooldown_penalty
+                logger.warning(f"{symbol}: Cooldown penalty active +{cooldown_penalty}pt | Adjusted threshold: {threshold}")
+            
             if not RegimeDetector.should_trade_regime(regime):
                 logger.info(f"{symbol}: ❌ Unfavorable regime ({regime}) | Threshold: {threshold} (base: {base_threshold} + BTC adj: {btc_threshold_adj})")
                 return
@@ -479,6 +485,7 @@ class SignalBot:
                     duration = (datetime.now() - entry_time).total_seconds() / 3600
                     
                     # Record partial profit immediately (affects daily PnL AND daily report)
+                    # CRITICAL: Each partial TP is recorded separately to prevent duplicate additions
                     self.risk_manager.record_trade(hit_info['pnl'])
                     
                     # Log each partial TP as a trade (so it shows in daily report)
@@ -522,6 +529,8 @@ class SignalBot:
                         score=signal.get('score', 0),
                         duration_hours=duration
                     )
+                    # Record remaining position P&L only (partial TPs already recorded separately)
+                    # CRITICAL: This prevents duplicate PnL additions to daily/weekly limits
                     self.risk_manager.record_trade(hit_info['remaining_pnl'])  # Only record remaining position P&L (partial TPs already recorded)
                 
                 elif hit_info['type'] == 'partial_protection_exit':

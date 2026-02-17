@@ -18,7 +18,7 @@ class BacktestConfig:
     # Add 1 month warmup period for indicators (200+ candles needed for EMA200)
     START_DATE = datetime(2024, 12, 15)  # Start 1 month earlier for warmup
     WARMUP_DATE = datetime(2025, 1, 1)  # Begin actual backtest here (after warmup)
-    END_DATE = datetime(2025, 12, 1)
+    END_DATE = datetime(2025, 12, 31)  # End of backtest period
     
     # ==================== INITIAL CONDITIONS ====================
     INITIAL_CAPITAL = Config.INITIAL_CAPITAL  # Use live bot capital
@@ -26,11 +26,12 @@ class BacktestConfig:
     # ==================== EXECUTION SIMULATION ====================
     # Realistic execution parameters
     SLIPPAGE_PERCENT = 0.05  # 0.05% slippage on market orders
-    TAKER_FEE = 0.055  # 0.055% Bitget taker fee
-    MAKER_FEE = 0.045  # 0.045% Bitget maker fee
+    TAKER_FEE = 0.06  # 0.055% Bitget taker fee (market orders)
+    MAKER_FEE = 0.02   # 0.02% Bitget maker fee (limit orders)
     
     # Order execution assumptions
     USE_MARKET_ORDERS = True  # True = market (guaranteed fill, more slippage)
+    MAKER_ORDER_PROBABILITY = 0.80  # 80% of orders are limit orders (maker fee)
     STOP_LOSS_SLIPPAGE = 0.1  # Extra slippage on stop losses (0.1%)
     
     # Conservative execution - if candle hits both TP and SL

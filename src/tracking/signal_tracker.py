@@ -333,11 +333,19 @@ class SignalTracker:
     def _handle_tp_hit(self, symbol: str, tp_level: str, early_exit: bool = False) -> Dict:
         """Handle take profit hit
         
+        CRITICAL PNL TRACKING:
+        - Calculates PnL for this partial exit
+        - Adds PnL to signal['realized_pnl'] (accumulates for total trade tracking)
+        - Returns 'pnl' (this partial exit) and 'total_pnl' (cumulative)
+        - main.py records 'pnl' to risk_manager IMMEDIATELY (realtime equity tracking)
+        - When trade fully closes, only remaining position's PnL needs to be recorded
+        - This prevents duplicate PnL additions
+        
         Args:
             symbol: Trading pair symbol
             tp_level: TP level hit (tp1, tp2, tp3)
             early_exit: If True, this is a near-TP protection trigger (not exact TP hit)
-        """
+        \"\"\"
         signal = self.active_signals[symbol]
         
         # Mark TP as hit
@@ -392,7 +400,15 @@ class SignalTracker:
         return hit_info
     
     def _handle_stop_loss_hit(self, symbol: str) -> Dict:
-        """Handle stop loss hit"""
+        """Handle stop loss hit
+        
+        CRITICAL PNL TRACKING:
+        - Calculates 'remaining_pnl' for the remaining position only
+        - Calculates 'total_pnl' = realized_pnl (from TPs) + remaining_pnl
+        - main.py records ONLY 'remaining_pnl' to risk_manager (partial TPs already recorded)
+        - This prevents duplicate PnL additions
+        - Total trade PnL is the sum of all partial exits + final exit
+        \"\"\"
         signal = self.active_signals[symbol]
         
         # Check if partial protection is active (50% at breakeven, 50% at original stop)

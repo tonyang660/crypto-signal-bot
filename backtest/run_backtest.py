@@ -106,7 +106,9 @@ def print_results(results: dict, engine: BacktestEngine):
     print(f"  Final Equity:       ${results['final_equity']:,.2f}")
     print(f"  Total Return:       {results['total_return_pct']:+.2f}%")
     print(f"  Total P&L:          ${results['total_pnl']:+,.2f}")
-    print(f"  Fees Paid:          ${results['total_fees_paid']:,.2f}")
+    print(f"  Total Volume:       ${results['total_volume_traded']:,.2f}")
+    print(f"  Fees Paid:          ${results['total_fees_paid']:,.2f} ({results['effective_fee_rate']:.4f}% of volume)")
+    print(f"  Fee Model:          {BacktestConfig.MAKER_ORDER_PROBABILITY*100:.0f}% maker ({BacktestConfig.MAKER_FEE}%) / {(1-BacktestConfig.MAKER_ORDER_PROBABILITY)*100:.0f}% taker ({BacktestConfig.TAKER_FEE}%)")
     
     # Trade stats
     print("\n📈 TRADE STATISTICS:")

@@ -17,10 +17,14 @@ class RiskManager:
         self.consecutive_losses = 0
         self.trading_enabled = True
         self.cooldown_until: Optional[datetime] = None
-        self.weekly_cooldown_until: Optional[datetime] = None  # Separate 24h cooldown for weekly limit
+        self.weekly_cooldown_until: Optional[datetime] = None  # Separate 12h cooldown for weekly limit
         self.last_reset_date = datetime.now().date()
         self.last_weekly_reset = datetime.now().date()
         self.last_volatility_alert: Optional[datetime] = None
+        
+        # Threshold penalties for active cooldowns
+        self.daily_threshold_penalty = 0  # +5 when consecutive loss cooldown active
+        self.weekly_threshold_penalty = 0  # +5 when weekly loss cooldown active
         
         # Store references for daily report generation
         self.performance_logger = performance_logger
@@ -46,43 +50,51 @@ class RiskManager:
         # Auto-reset weekly if new week
         self._check_weekly_reset()
         
+        # Get dynamic risk parameters based on current equity
+        risk_params = Config.get_dynamic_risk_params(self.equity)
+        max_daily_loss = risk_params['max_daily_loss']
+        max_weekly_loss = risk_params['max_weekly_loss']
+        
         # Check cooldown
         if self.cooldown_until:
             if datetime.now() < self.cooldown_until:
                 # Cooldown still active
                 remaining = (self.cooldown_until - datetime.now()).total_seconds() / 3600
-                return False, f"⏸️ Cooldown active for {remaining:.1f} more hours"
+                return False, f"⏸️ Cooldown active for {remaining:.1f} more hours | Threshold +{self.daily_threshold_penalty}"
             else:
-                # Cooldown expired - clear it and reset consecutive losses
-                logger.info("✅ Cooldown period ended - Resetting consecutive losses counter")
+                # Cooldown expired - clear it, reset consecutive losses, and clear penalty
+                logger.info("✅ Cooldown period ended - Resetting consecutive losses counter and clearing threshold penalty")
                 self.cooldown_until = None
                 self.consecutive_losses = 0  # Reset the counter
+                self.daily_threshold_penalty = 0  # Clear threshold penalty
                 self._save_state()
         
         # Daily loss limit REMOVED - relying on consecutive loss cooldown instead
         # This allows recovery trades during the same day if conditions improve
         # The consecutive loss check + cooldown provides better risk management
         
-        # Check weekly cooldown (24-hour pause when weekly limit hit)
+        # Check weekly cooldown (12-hour pause when weekly limit hit)
         if self.weekly_cooldown_until:
             if datetime.now() < self.weekly_cooldown_until:
                 remaining = (self.weekly_cooldown_until - datetime.now()).total_seconds() / 3600
-                return False, f"⏸️ Weekly limit cooldown active for {remaining:.1f} more hours (Weekly PnL: ${self.weekly_pnl:.2f})"
+                return False, f"⏸️ Weekly limit cooldown active for {remaining:.1f} more hours (Weekly PnL: ${self.weekly_pnl:.2f}) | Threshold +{self.weekly_threshold_penalty}"
             else:
-                # Cooldown expired - clear it
-                logger.info("✅ Weekly cooldown period ended")
+                # Cooldown expired - clear it and penalty
+                logger.info("✅ Weekly cooldown period ended - Clearing threshold penalty")
                 self.weekly_cooldown_until = None
+                self.weekly_threshold_penalty = 0
                 self._save_state()
         
         # Check weekly loss limit based on NET weekly PNL (total wins + losses)
         if self.weekly_pnl < 0:
             weekly_loss_pct = abs(self.weekly_pnl / self.equity)
-            if weekly_loss_pct >= Config.MAX_WEEKLY_LOSS:
-                # Activate 24-hour cooldown instead of disabling for entire week
-                self.weekly_cooldown_until = datetime.now() + timedelta(hours=24)
-                logger.warning(f"⏸️ Weekly loss limit triggered - 24h cooldown until {self.weekly_cooldown_until.strftime('%Y-%m-%d %H:%M')}")
+            if weekly_loss_pct >= max_weekly_loss:
+                # Activate 12-hour cooldown instead of disabling for entire week
+                self.weekly_cooldown_until = datetime.now() + timedelta(hours=12)
+                self.weekly_threshold_penalty = 5  # Add +5 threshold penalty for the week
+                logger.warning(f"⏸️ Weekly loss limit triggered ({max_weekly_loss*100:.1f}%) - 12h cooldown until {self.weekly_cooldown_until.strftime('%Y-%m-%d %H:%M')} | Threshold +5")
                 self._save_state()
-                return False, f"🛑 Weekly loss limit hit: ${self.weekly_pnl:.2f} ({weekly_loss_pct*100:.1f}%) - 24h pause"
+                return False, f"🛑 Weekly loss limit hit: ${self.weekly_pnl:.2f} ({weekly_loss_pct*100:.1f}%) - 12h pause | Threshold +5"
         
         # Check consecutive losses
         if self.consecutive_losses >= Config.MAX_CONSECUTIVE_LOSSES:
@@ -119,7 +131,8 @@ class RiskManager:
                 # Activate cooldown after max consecutive losses
                 if self.consecutive_losses >= Config.MAX_CONSECUTIVE_LOSSES:
                     self.cooldown_until = datetime.now() + timedelta(hours=4)
-                    logger.warning(f"⏸️ Cooldown activated until {self.cooldown_until.strftime('%Y-%m-%d %H:%M')}")
+                    self.daily_threshold_penalty = 5  # Add +5 threshold penalty for the day
+                    logger.warning(f"⏸️ 4-hour cooldown activated until {self.cooldown_until.strftime('%Y-%m-%d %H:%M')} | Threshold +5")
             
             else:
                 # Record win
@@ -148,8 +161,20 @@ class RiskManager:
         
         return 'normal'
     
+    def get_threshold_adjustment(self) -> int:
+        """
+        Get total threshold adjustment from active penalties
+        
+        Returns:
+            Combined threshold penalty (daily + weekly)
+        """
+        return self.daily_threshold_penalty + self.weekly_threshold_penalty
+    
     def get_risk_stats(self) -> dict:
-        """Get current risk statistics"""
+        """Get current risk statistics with dynamic parameters"""
+        # Get dynamic risk parameters for current equity
+        risk_params = Config.get_dynamic_risk_params(self.equity)
+        
         return {
             'daily_pnl': self.daily_pnl,  # Include daily PnL (all trades)
             'equity': self.equity,
@@ -162,7 +187,18 @@ class RiskManager:
             'consecutive_losses': self.consecutive_losses,
             'trading_enabled': self.trading_enabled,
             'cooldown_until': self.cooldown_until.isoformat() if self.cooldown_until else None,
-            'weekly_cooldown_until': self.weekly_cooldown_until.isoformat() if self.weekly_cooldown_until else None
+            'weekly_cooldown_until': self.weekly_cooldown_until.isoformat() if self.weekly_cooldown_until else None,
+            # Dynamic risk parameters
+            'risk_per_trade': risk_params['risk_per_trade'],
+            'max_daily_loss': risk_params['max_daily_loss'],
+            'max_weekly_loss': risk_params['max_weekly_loss'],
+            'risk_per_trade_pct': risk_params['risk_per_trade'] * 100,
+            'max_daily_loss_pct': risk_params['max_daily_loss'] * 100,
+            'max_weekly_loss_pct': risk_params['max_weekly_loss'] * 100,
+            # Threshold penalties
+            'daily_threshold_penalty': self.daily_threshold_penalty,
+            'weekly_threshold_penalty': self.weekly_threshold_penalty,
+            'total_threshold_penalty': self.get_threshold_adjustment()
         }
     
     def _check_daily_reset(self, skip_reset: bool = False) -> bool:
@@ -206,7 +242,7 @@ class RiskManager:
                         """
                         
                         self.discord.send_status_update(message, combined_stats)
-                        logger.info("✅ Daily report saved and sent before reset")
+                        logger.info("✅ Daily report savedrisk_params['max_weekly_loss']")
                     except Exception as e:
                         logger.error(f"Error saving daily report before reset: {e}")
                 
@@ -214,6 +250,14 @@ class RiskManager:
                 self.daily_pnl = 0.0  # Reset daily PnL
                 self.daily_loss = 0.0
                 self.last_reset_date = today
+                
+                # Clear daily threshold penalty on new day
+                if self.daily_threshold_penalty > 0:
+                    logger.info(f"✅ New day - Clearing daily threshold penalty ({self.daily_threshold_penalty}pt)")
+                    self.daily_threshold_penalty = 0
+                
+                # Get dynamic risk parameters for clearing cooldown check
+                risk_params = Config.get_dynamic_risk_params(self.equity)
                 
                 # Clear cooldown if weekly limit not hit
                 if abs(self.weekly_loss / self.equity) < Config.MAX_WEEKLY_LOSS:
@@ -267,6 +311,12 @@ class RiskManager:
             self.trading_enabled = True
             self.cooldown_until = None
             self.weekly_cooldown_until = None  # Clear weekly cooldown on new week
+            
+            # Clear weekly threshold penalty on new week
+            if self.weekly_threshold_penalty > 0:
+                logger.info(f"✅ New week - Clearing weekly threshold penalty ({self.weekly_threshold_penalty}pt)")
+                self.weekly_threshold_penalty = 0
+            
             self._save_state()
     
     def _is_weekend(self) -> bool:
@@ -286,6 +336,8 @@ class RiskManager:
                 'trading_enabled': self.trading_enabled,
                 'cooldown_until': self.cooldown_until.isoformat() if self.cooldown_until else None,
                 'weekly_cooldown_until': self.weekly_cooldown_until.isoformat() if self.weekly_cooldown_until else None,
+                'daily_threshold_penalty': self.daily_threshold_penalty,  # Save threshold penalties
+                'weekly_threshold_penalty': self.weekly_threshold_penalty,
                 'last_reset_date': self.last_reset_date.isoformat(),
                 'last_weekly_reset': self.last_weekly_reset.isoformat(),
                 'last_updated': datetime.now().isoformat()
@@ -312,6 +364,10 @@ class RiskManager:
                 self.weekly_pnl = state.get('weekly_pnl', 0.0)  # Load weekly PnL
                 self.consecutive_losses = state.get('consecutive_losses', 0)
                 self.trading_enabled = state.get('trading_enabled', True)
+                
+                # Load threshold penalties
+                self.daily_threshold_penalty = state.get('daily_threshold_penalty', 0)
+                self.weekly_threshold_penalty = state.get('weekly_threshold_penalty', 0)
                 
                 cooldown_str = state.get('cooldown_until')
                 if cooldown_str:

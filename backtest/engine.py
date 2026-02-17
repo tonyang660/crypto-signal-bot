@@ -115,6 +115,7 @@ class BacktestEngine:
         # Statistics
         self.total_fees_paid = 0.0
         self.total_slippage_cost = 0.0
+        self.total_volume_traded = 0.0  # Track total volume (entry + exit values)
         
         if BacktestConfig.ENABLE_LOGGING:
             logger.info(f"Backtest initialized with ${self.equity:.2f}")
@@ -134,6 +135,28 @@ class BacktestEngine:
             logger.error(message)
         elif level == 'success':
             logger.success(message)
+    
+    def _calculate_fee(self, trade_value: float) -> float:
+        """
+        Calculate fee based on maker/taker probability
+        
+        Simulates 70% maker orders (limit orders) and 30% taker orders (market orders)
+        Returns weighted average fee
+        
+        Args:
+            trade_value: Total value of the trade
+            
+        Returns:
+            Fee amount in dollars
+        """
+        maker_prob = BacktestConfig.MAKER_ORDER_PROBABILITY
+        taker_prob = 1.0 - maker_prob
+        
+        # Weighted average fee rate
+        avg_fee_rate = (maker_prob * BacktestConfig.MAKER_FEE + 
+                       taker_prob * BacktestConfig.TAKER_FEE)
+        
+        return trade_value * (avg_fee_rate / 100)
     
     def run(self) -> Dict:
         """
@@ -304,7 +327,15 @@ class BacktestEngine:
                 del self.active_positions[symbol]
     
     def _handle_tp_hit(self, position: Position, current_time: datetime, tp_level: str, tp_price: float):
-        """Handle take profit hit"""
+        """Handle take profit hit
+        
+        CRITICAL PNL TRACKING:
+        - Calculates PnL for this partial exit (after fees and slippage)
+        - Adds PnL to position.realized_pnl (accumulates for final trade record)
+        - IMMEDIATELY adds PnL to equity (partial exit is realized profit)
+        - This matches live bot behavior and prevents duplicate additions
+        - When trade fully closes, _record_trade does NOT add to equity again
+        """
         # Apply slippage
         if BacktestConfig.USE_MARKET_ORDERS:
             if position.direction == 'long':
@@ -323,16 +354,25 @@ class BacktestEngine:
         else:
             pnl = (position.entry_price - exit_price) * portion_contracts
         
-        # Subtract fees
+        # Subtract fees (weighted average of maker/taker)
         exit_value = exit_price * portion_contracts
-        fee = exit_value * (BacktestConfig.TAKER_FEE / 100)
+        fee = self._calculate_fee(exit_value)
         pnl -= fee
         self.total_fees_paid += fee
+        self.total_volume_traded += exit_value  # Track volume
         
-        # Update position
+        # Update position realized PnL (accumulate for final trade record)
         position.realized_pnl += pnl
         position.remaining_percent -= close_percent
         setattr(position, f'{tp_level}_hit', True)
+        
+        # ADD PNL TO EQUITY IMMEDIATELY (partial exit is realized profit)
+        # This matches live bot behavior and prevents duplicate additions
+        self.equity += pnl
+        self.daily_pnl += pnl
+        self.weekly_pnl += pnl
+        
+        self._log('debug', f"{current_time} {position.symbol}: {tp_level.upper()} hit | P&L: ${pnl:.2f} | Equity: ${self.equity:.2f}")
         
         # Trail stop
         if tp_level == 'tp1':
@@ -345,11 +385,9 @@ class BacktestEngine:
             # Move to breakeven
             position.stop_loss = position.entry_price
         
-        self._log('debug', f"{current_time} {position.symbol}: {tp_level.upper()} hit | P&L: ${pnl:.2f}")
-        
-        # If fully closed
+        # If fully closed (all TPs hit), record the trade WITHOUT adding to equity again
         if position.remaining_percent <= 0:
-            self._record_trade(position, current_time, exit_price, 'completed')
+            self._record_trade(position, current_time, exit_price, 'completed', add_to_equity=False)
     
     def _close_position(self, position: Position, exit_time: datetime, exit_price: float, reason: str, sl_hit: bool = False):
         """Close position and record trade"""
@@ -373,20 +411,32 @@ class BacktestEngine:
         else:
             pnl = (position.entry_price - exit_price) * remaining_contracts
         
-        # Subtract fees
+        # Subtract fees (weighted average of maker/taker)
         exit_value = exit_price * remaining_contracts
-        fee = exit_value * (BacktestConfig.TAKER_FEE / 100)
+        fee = self._calculate_fee(exit_value)
         pnl -= fee
         self.total_fees_paid += fee
+        self.total_volume_traded += exit_value  # Track volume
         
-        # Add to realized PnL
+        # Add remaining position PnL to total realized PnL
         position.realized_pnl += pnl
         
-        # Record trade
-        self._record_trade(position, exit_time, exit_price, reason)
+        # ADD REMAINING PNL TO EQUITY IMMEDIATELY
+        # (Partial exits already added their PnL, so this only adds the final portion)
+        self.equity += pnl
+        self.daily_pnl += pnl
+        self.weekly_pnl += pnl
+        
+        # Record trade WITHOUT adding to equity again (already added incrementally)
+        self._record_trade(position, exit_time, exit_price, reason, add_to_equity=False)
     
-    def _record_trade(self, position: Position, exit_time: datetime, exit_price: float, reason: str):
-        """Record completed trade"""
+    def _record_trade(self, position: Position, exit_time: datetime, exit_price: float, reason: str, add_to_equity: bool = True):
+        """Record completed trade
+        
+        Args:
+            add_to_equity: If False, equity was already updated incrementally during partial exits.
+                          This prevents duplicate PnL additions.
+        """
         duration = (exit_time - position.entry_time).total_seconds() / 3600
         pnl_percent = (position.realized_pnl / (position.entry_price * position.contracts)) * 100
         
@@ -397,7 +447,7 @@ class BacktestEngine:
             entry_price=position.entry_price,
             exit_time=exit_time,
             exit_price=exit_price,
-            pnl=position.realized_pnl,
+            pnl=position.realized_pnl,  # Total PnL including all fees from all exits
             pnl_percent=pnl_percent,
             exit_reason=reason,
             regime=position.regime,
@@ -407,21 +457,24 @@ class BacktestEngine:
         
         self.closed_trades.append(trade)
         
-        # Update equity
-        self.equity += position.realized_pnl
-        self.daily_pnl += position.realized_pnl
-        self.weekly_pnl += position.realized_pnl
+        # Only add to equity if not already added incrementally
+        # (Prevents duplicate additions when partial exits already updated equity)
+        if add_to_equity:
+            self.equity += position.realized_pnl
+            self.daily_pnl += position.realized_pnl
+            self.weekly_pnl += position.realized_pnl
         
-        # Track consecutive losses
+        # Track consecutive losses (based on TOTAL trade PnL including all fees)
         if position.realized_pnl < 0:
             self.consecutive_losses += 1
             if self.consecutive_losses >= BacktestConfig.MAX_CONSECUTIVE_LOSSES:
-                self.cooldown_until = exit_time + timedelta(hours=BacktestConfig.COOLDOWN_HOURS)
-                self._log('info', f"{exit_time}: Cooldown activated until {self.cooldown_until}")
+                self.cooldown_until = exit_time + timedelta(hours=4)  # 4-hour cooldown
+                self.daily_threshold_penalty = 5  # +5 threshold penalty
+                self._log('info', f"{exit_time}: 4-hour cooldown activated until {self.cooldown_until} | Threshold +5")
         else:
             self.consecutive_losses = 0
         
-        self._log('info', f"{exit_time} {position.symbol}: Trade closed | {reason} | P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
+        self._log('info', f"{exit_time} {position.symbol}: Trade closed | {reason} | Total P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
     
     def _scan_for_signals(self, current_time: datetime):
         """Scan for new trading signals (uses EXACT live bot logic)"""
@@ -508,6 +561,12 @@ class BacktestEngine:
                 # Apply BTC regime adjustment to threshold
                 threshold = base_threshold + btc_threshold_adj
                 
+                # Apply cooldown penalty adjustment to threshold
+                cooldown_penalty = self.daily_threshold_penalty + self.weekly_threshold_penalty
+                if cooldown_penalty > 0:
+                    threshold += cooldown_penalty
+                    self._log('info', f"{current_time} {symbol}: Cooldown penalty active +{cooldown_penalty}pt | Adjusted threshold: {threshold}")
+                
                 # Check long entry
                 long_check = EntryLogic.check_long_entry(data)
                 score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
@@ -571,10 +630,11 @@ class BacktestEngine:
             margin_used = margin_used * btc_position_mult
             self._log('debug', f"{entry_time} {symbol}: BTC regime adjusted position: {original_contracts} → {contracts} contracts ({btc_position_mult:.1%} multiplier)")
         
-        # Entry fee
+        # Entry fee (weighted average of maker/taker)
         entry_value = entry_price * contracts
-        entry_fee = entry_value * (BacktestConfig.TAKER_FEE / 100)
+        entry_fee = self._calculate_fee(entry_value)
         self.total_fees_paid += entry_fee
+        self.total_volume_traded += entry_value  # Track volume
         
         # Get entry ATR for adaptive stop monitoring
         entry_atr = data['primary']['atr'].iloc[-1]
@@ -634,13 +694,24 @@ class BacktestEngine:
     
     def _can_trade(self, current_time: datetime) -> Tuple[bool, str]:
         """Check if trading allowed (same logic as live bot)"""
-        # Check cooldown
+        # Check cooldown expiry
         if self.cooldown_until and current_time < self.cooldown_until:
             remaining = (self.cooldown_until - current_time).total_seconds() / 3600
-            return False, f"Cooldown active for {remaining:.1f} more hours"
+            return False, f"Cooldown for {remaining:.1f}h more | Threshold +{self.daily_threshold_penalty}"
         elif self.cooldown_until and current_time >= self.cooldown_until:
             self.cooldown_until = None
             self.consecutive_losses = 0
+            self.daily_threshold_penalty = 0  # Clear penalty when cooldown expires
+            self._log('info', f"{current_time}: Cooldown expired - Clearing threshold penalty")
+        
+        # Check weekly cooldown expiry
+        if self.weekly_cooldown_until and current_time < self.weekly_cooldown_until:
+            remaining = (self.weekly_cooldown_until - current_time).total_seconds() / 3600
+            return False, f"Weekly cooldown for {remaining:.1f}h more | Threshold +{self.weekly_threshold_penalty}"
+        elif self.weekly_cooldown_until and current_time >= self.weekly_cooldown_until:
+            self.weekly_cooldown_until = None
+            self.weekly_threshold_penalty = 0  # Clear penalty when cooldown expires
+            self._log('info', f"{current_time}: Weekly cooldown expired - Clearing threshold penalty")
         
         # Check weekly loss
         if BacktestConfig.MAX_WEEKLY_LOSS and self.weekly_pnl < 0:
@@ -846,6 +917,8 @@ class BacktestEngine:
             'initial_equity': self.initial_equity,
             'final_equity': round(final_equity, 2),
             'total_fees_paid': round(self.total_fees_paid, 2),
+            'total_volume_traded': round(self.total_volume_traded, 2),
+            'effective_fee_rate': round((self.total_fees_paid / self.total_volume_traded * 100), 4) if self.total_volume_traded > 0 else 0,
             'avg_duration_hours': round(trades_df['duration_hours'].mean(), 2),
             # Session tracking - directional bias
             'long_trades': long_count,
