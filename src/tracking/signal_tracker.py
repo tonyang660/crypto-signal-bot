@@ -345,7 +345,7 @@ class SignalTracker:
             symbol: Trading pair symbol
             tp_level: TP level hit (tp1, tp2, tp3)
             early_exit: If True, this is a near-TP protection trigger (not exact TP hit)
-        \"\"\"
+        """
         signal = self.active_signals[symbol]
         
         # Mark TP as hit
