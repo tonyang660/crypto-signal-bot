@@ -141,6 +141,7 @@ class SignalTracker:
                 'tp3_hit': False,
                 'stop_hit': False,
                 'remaining_percent': 100,
+                'contracts_remaining': position_size.get('contracts', 0),  # Track actual asset amount remaining
                 'realized_pnl': 0.0,
                 'current_price': entry_price,
                 'best_price': entry_price,  # Track best price achieved
@@ -354,13 +355,23 @@ class SignalTracker:
         # Calculate closed percentage
         close_percent = signal['take_profits'][tp_level]['close_percent']
         
+        # Check if trying to close more than remaining
+        if close_percent > signal['remaining_percent']:
+            close_percent = signal['remaining_percent']
+            logger.warning(f"{symbol}: {tp_level.upper()} close adjusted from {signal['take_profits'][tp_level]['close_percent']}% to {close_percent}% (remaining)")
+        
         # Calculate PnL for this portion
         entry_price = signal['entry_price']
         current_price = signal['current_price']
         direction = signal['direction']
         contracts = signal['position_size']['contracts']
+        contracts_remaining = signal.get('contracts_remaining', contracts)  # Backward compatibility
         
-        portion_contracts = contracts * (close_percent / 100)
+        # Use contracts_remaining instead of total contracts
+        if signal['remaining_percent'] > 0:
+            portion_contracts = contracts_remaining * (close_percent / signal['remaining_percent'])
+        else:
+            portion_contracts = 0
         
         if direction == 'long':
             pnl = (current_price - entry_price) * portion_contracts
@@ -370,6 +381,7 @@ class SignalTracker:
         # Update signal
         signal['realized_pnl'] += pnl
         signal['remaining_percent'] -= close_percent
+        signal['contracts_remaining'] = contracts_remaining - portion_contracts
         
         # Apply trailing stop strategy
         old_stop = signal['stop_loss']
@@ -379,23 +391,32 @@ class SignalTracker:
             signal['stop_loss'] = new_stop
             logger.info(f"📈 Stop loss adjusted for {symbol}: ${old_stop:.4f} → ${new_stop:.4f} (Trailing after {tp_level.upper()})")
         
+        # Extract base asset symbol
+        base_asset = symbol[:-4]
+        
         hit_info = {
             'type': 'tp_hit',
             'level': tp_level,
             'price': current_price,
             'close_percent': close_percent,
+            'contracts_closed': portion_contracts,
             'pnl': pnl,
             'total_pnl': signal['realized_pnl'],
             'remaining_percent': signal['remaining_percent'],
+            'contracts_remaining': signal['contracts_remaining'],
             'new_stop_loss': new_stop,
             'signal': signal.copy()  # Include signal data
         }
         
-        logger.info(f"🎯 {tp_level.upper()} hit for {symbol} | PnL: ${pnl:.2f}")
+        logger.info(f"🎯 {tp_level.upper()} hit for {symbol} | Closed {portion_contracts:.4f} {base_asset} ({close_percent:.1f}%) | PnL: ${pnl:+.2f} | Remaining: {signal['contracts_remaining']:.4f} {base_asset} ({signal['remaining_percent']:.1f}%)")
         
-        # If all position closed, move to history
+        # If all position closed or remaining too small, move to history
         if signal['remaining_percent'] <= 0:
             self._close_signal(symbol, 'completed')
+        elif signal['remaining_percent'] < 20.0:
+            # Auto-close positions with less than 20% remaining
+            logger.info(f"{symbol}: Auto-closing small remaining position ({signal['remaining_percent']:.1f}%)")
+            self._handle_stop_loss_hit(symbol)  # Close remaining at current price
         
         return hit_info
     
@@ -426,8 +447,8 @@ class SignalTracker:
                 exit_price = entry_price - buffer
             
             contracts = signal['position_size']['contracts']
-            remaining_contracts = contracts * (signal['remaining_percent'] / 100)
-            partial_contracts = remaining_contracts * 0.5  # Exit 50%
+            contracts_remaining = signal.get('contracts_remaining', contracts * (signal['remaining_percent'] / 100))
+            partial_contracts = contracts_remaining * 0.5  # Exit 50%
             
             # Calculate PnL for this partial exit (should be near breakeven)
             if direction == 'long':
@@ -438,6 +459,7 @@ class SignalTracker:
             # Update signal state
             signal['realized_pnl'] += partial_pnl
             signal['remaining_percent'] *= 0.5  # 50% remains
+            signal['contracts_remaining'] = contracts_remaining - partial_contracts
             # Backward compatibility: use stop_loss if original_stop_loss doesn't exist
             original_stop = signal.get('original_stop_loss', signal['stop_loss'])
             signal['stop_loss'] = original_stop  # Restore original stop for remaining 50%
@@ -445,10 +467,15 @@ class SignalTracker:
             
             self._save_active_signals()
             
+            # Extract base asset symbol
+            base_asset = symbol[:-4]
+            
             hit_info = {
                 'type': 'partial_protection_exit',
                 'price': exit_price,
                 'partial_pnl': partial_pnl,
+                'contracts_closed': partial_contracts,
+                'contracts_remaining': signal['contracts_remaining'],
                 'percent_exited': 50,
                 'percent_remaining': signal['remaining_percent'],
                 'new_stop': signal['stop_loss'],
@@ -456,8 +483,8 @@ class SignalTracker:
             }
             
             logger.success(
-                f"✅ {symbol} Partial protection: 50% exited at ${exit_price:.4f} "
-                f"(PnL: ${partial_pnl:.2f}), 50% continues with stop at ${signal['stop_loss']:.4f}"
+                f"✅ {symbol} Partial protection: {partial_contracts:.4f} {base_asset} (50%) exited at ${exit_price:.4f} "
+                f"(PnL: ${partial_pnl:+.2f}), {signal['contracts_remaining']:.4f} {base_asset} (50%) continues with stop at ${signal['stop_loss']:.4f}"
             )
             
             return hit_info
@@ -471,8 +498,13 @@ class SignalTracker:
         contracts = signal['position_size']['contracts']
         direction = signal['direction']
         
-        # Account for any already realized profits from TPs
-        remaining_contracts = contracts * (signal['remaining_percent'] / 100)
+        # Use contracts_remaining for accurate tracking
+        remaining_contracts = signal.get('contracts_remaining', contracts * (signal['remaining_percent'] / 100))
+        
+        # Safeguard: if contracts_remaining is 0 or negative, calculate from remaining_percent
+        if remaining_contracts <= 0:
+            remaining_contracts = contracts * (signal['remaining_percent'] / 100)
+            logger.warning(f"{symbol}: contracts_remaining was {signal.get('contracts_remaining', 0)}, calculated from percent: {remaining_contracts:.4f}")
         
         if direction == 'long':
             remaining_pnl = (stop_price - entry_price) * remaining_contracts
@@ -481,15 +513,19 @@ class SignalTracker:
         
         total_pnl = signal['realized_pnl'] + remaining_pnl
         
+        # Extract base asset symbol
+        base_asset = symbol[:-4]
+        
         hit_info = {
             'type': 'stop_hit',
             'price': stop_price,  # Use actual SL price, not current market price (simulates real order execution)
             'remaining_pnl': remaining_pnl,  # P&L from remaining position (can be negative, zero, or positive)
             'total_pnl': total_pnl,
+            'contracts_closed': remaining_contracts,
             'signal': signal.copy()  # Include signal data before closing
         }
         
-        logger.warning(f"🛑 Stop loss hit for {symbol} | Remaining PnL: ${remaining_pnl:+.2f} | Total PnL: ${total_pnl:+.2f}")
+        logger.warning(f"🛑 Stop loss hit for {symbol} | Closed {remaining_contracts:.4f} {base_asset} ({signal['remaining_percent']:.1f}%) | Remaining PnL: ${remaining_pnl:+.2f} | Total PnL: ${total_pnl:+.2f}")
         
         # Close signal
         self._close_signal(symbol, 'stopped')
@@ -560,7 +596,10 @@ class SignalTracker:
             summary.append(f"   TPs: {' | '.join(tp_status)}")
             
             # Show position status
-            summary.append(f"   Position: {signal['remaining_percent']:.0f}% open")
+            base_asset = symbol[:-4]
+            contracts_remaining = signal.get('contracts_remaining', signal['position_size']['contracts'] * (signal['remaining_percent'] / 100))
+            total_contracts = signal['position_size']['contracts']
+            summary.append(f"   Position: {contracts_remaining:.4f} {base_asset} ({signal['remaining_percent']:.0f}% of {total_contracts:.4f})")
             summary.append(f"   Realized P&L: ${signal['realized_pnl']:+.2f}")
             
             # Calculate unrealized P&L

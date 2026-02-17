@@ -477,7 +477,10 @@ class SignalBot:
                         pnl=hit_info['pnl'],
                         total_pnl=hit_info['total_pnl'],
                         remaining_percent=hit_info['remaining_percent'],
-                        new_stop_loss=hit_info.get('new_stop_loss')
+                        new_stop_loss=hit_info.get('new_stop_loss'),
+                        contracts_remaining=hit_info.get('contracts_remaining'),
+                        contracts_closed=hit_info.get('contracts_closed'),
+                        close_percent=hit_info.get('close_percent')
                     )
                     
                     # Calculate duration for logging
@@ -509,7 +512,9 @@ class SignalBot:
                         symbol=symbol,
                         direction=signal['direction'],
                         price=current_price,
-                        total_pnl=hit_info['remaining_pnl']  # P&L from remaining position only
+                        total_pnl=hit_info['remaining_pnl'],  # P&L from remaining position only
+                        contracts_closed=hit_info.get('contracts_closed'),
+                        remaining_percent=signal.get('remaining_percent', 100)
                     )
                     
                     # Calculate duration
@@ -535,10 +540,14 @@ class SignalBot:
                 
                 elif hit_info['type'] == 'partial_protection_exit':
                     # Partial protection triggered - 50% exited at breakeven
+                    base_asset = symbol[:-4]
+                    contracts_closed = hit_info.get('contracts_closed', 0)
+                    contracts_remaining = hit_info.get('contracts_remaining', 0)
+                    
                     self.discord.send_status_update(
                         f"⚡ **Partial Protection Exit - {symbol}**\n\n"
-                        f"50% of position exited at breakeven.\n"
-                        f"Remaining 50% continues with original stop.\n\n"
+                        f"{contracts_closed:.4f} {base_asset} (50%) exited at breakeven.\n"
+                        f"{contracts_remaining:.4f} {base_asset} (50%) continues with original stop.\n\n"
                         f"**Details:**\n"
                         f"Direction: {signal['direction'].upper()}\n"
                         f"Exit Price: ${hit_info['price']:.4f}\n"

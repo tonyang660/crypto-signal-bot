@@ -50,10 +50,9 @@ class RiskManager:
         # Auto-reset weekly if new week
         self._check_weekly_reset()
         
-        # Get dynamic risk parameters based on current equity
-        risk_params = Config.get_dynamic_risk_params(self.equity)
-        max_daily_loss = risk_params['max_daily_loss']
-        max_weekly_loss = risk_params['max_weekly_loss']
+        # Use fixed risk limits
+        max_daily_loss = Config.MAX_DAILY_LOSS
+        max_weekly_loss = Config.MAX_WEEKLY_LOSS
         
         # Check cooldown
         if self.cooldown_until:
@@ -171,10 +170,7 @@ class RiskManager:
         return self.daily_threshold_penalty + self.weekly_threshold_penalty
     
     def get_risk_stats(self) -> dict:
-        """Get current risk statistics with dynamic parameters"""
-        # Get dynamic risk parameters for current equity
-        risk_params = Config.get_dynamic_risk_params(self.equity)
-        
+        """Get current risk statistics"""
         return {
             'daily_pnl': self.daily_pnl,  # Include daily PnL (all trades)
             'equity': self.equity,
@@ -188,13 +184,13 @@ class RiskManager:
             'trading_enabled': self.trading_enabled,
             'cooldown_until': self.cooldown_until.isoformat() if self.cooldown_until else None,
             'weekly_cooldown_until': self.weekly_cooldown_until.isoformat() if self.weekly_cooldown_until else None,
-            # Dynamic risk parameters
-            'risk_per_trade': risk_params['risk_per_trade'],
-            'max_daily_loss': risk_params['max_daily_loss'],
-            'max_weekly_loss': risk_params['max_weekly_loss'],
-            'risk_per_trade_pct': risk_params['risk_per_trade'] * 100,
-            'max_daily_loss_pct': risk_params['max_daily_loss'] * 100,
-            'max_weekly_loss_pct': risk_params['max_weekly_loss'] * 100,
+            # Fixed risk parameters
+            'risk_per_trade': Config.RISK_PER_TRADE,
+            'max_daily_loss': Config.MAX_DAILY_LOSS,
+            'max_weekly_loss': Config.MAX_WEEKLY_LOSS,
+            'risk_per_trade_pct': Config.RISK_PER_TRADE * 100,
+            'max_daily_loss_pct': Config.MAX_DAILY_LOSS * 100,
+            'max_weekly_loss_pct': Config.MAX_WEEKLY_LOSS * 100,
             # Threshold penalties
             'daily_threshold_penalty': self.daily_threshold_penalty,
             'weekly_threshold_penalty': self.weekly_threshold_penalty,
@@ -255,9 +251,6 @@ class RiskManager:
                 if self.daily_threshold_penalty > 0:
                     logger.info(f"✅ New day - Clearing daily threshold penalty ({self.daily_threshold_penalty}pt)")
                     self.daily_threshold_penalty = 0
-                
-                # Get dynamic risk parameters for clearing cooldown check
-                risk_params = Config.get_dynamic_risk_params(self.equity)
                 
                 # Clear cooldown if weekly limit not hit
                 if abs(self.weekly_loss / self.equity) < Config.MAX_WEEKLY_LOSS:

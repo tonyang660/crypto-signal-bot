@@ -42,6 +42,10 @@ class DiscordNotifier:
             tp1_reward = abs(take_profits['tp1']['price'] - entry_price)
             rr_ratio = tp1_reward / risk if risk > 0 else 0
             
+            # Extract base asset and contracts
+            base_asset = symbol[:-4]  # Remove USDT
+            contracts = position_size.get('contracts', 0)
+            
             # Determine color based on direction
             color = 0x00FF00 if direction == 'long' else 0xFF0000  # Green for long, Red for short
             
@@ -57,7 +61,7 @@ class DiscordNotifier:
                     },
                     {
                         "name": "💰 Position Size",
-                        "value": f"${position_size['notional_usd']:.2f} ({position_size['leverage']:.1f}×)",
+                        "value": f"{contracts:.4f} {base_asset} (${position_size['notional_usd']:.2f} @ {position_size['leverage']:.1f}×)",
                         "inline": True
                     },
                     {
@@ -133,10 +137,15 @@ class DiscordNotifier:
         pnl: float,
         total_pnl: float,
         remaining_percent: int,
-        new_stop_loss: float = None
+        new_stop_loss: float = None,
+        contracts_remaining: float = None,
+        contracts_closed: float = None,
+        close_percent: float = None
     ) -> bool:
         """Send TP hit notification"""
         try:
+            base_asset = symbol[:-4]  # Remove USDT
+            
             fields = [
                 {
                     "name": "Direction",
@@ -159,8 +168,13 @@ class DiscordNotifier:
                     "inline": True
                 },
                 {
+                    "name": "Closed",
+                    "value": f"{contracts_closed:.4f} {base_asset} ({close_percent:.1f}%)" if contracts_closed is not None else f"{close_percent:.1f}%" if close_percent is not None else "N/A",
+                    "inline": True
+                },
+                {
                     "name": "Remaining Position",
-                    "value": f"{remaining_percent}%",
+                    "value": f"{contracts_remaining:.4f} {base_asset} ({remaining_percent:.1f}%)" if contracts_remaining is not None else f"{remaining_percent:.1f}%",
                     "inline": True
                 }
             ]
@@ -197,30 +211,41 @@ class DiscordNotifier:
         symbol: str,
         direction: str,
         price: float,
-        total_pnl: float
+        total_pnl: float,
+        contracts_closed: float = None,
+        remaining_percent: float = None
     ) -> bool:
         """Send stop loss hit notification"""
         try:
+            base_asset = symbol[:-4]  # Remove USDT
+            
+            fields = [
+                {
+                    "name": "Direction",
+                    "value": direction.upper(),
+                    "inline": True
+                },
+                {
+                    "name": "Exit Price",
+                    "value": self._format_price(price),
+                    "inline": True
+                },
+                {
+                    "name": "Closed",
+                    "value": f"{contracts_closed:.4f} {base_asset} ({remaining_percent:.1f}%)" if contracts_closed is not None else "N/A",
+                    "inline": True
+                },
+                {
+                    "name": "Total PnL",
+                    "value": f"${total_pnl:+.2f}",
+                    "inline": False
+                }
+            ]
+            
             embed = {
                 "title": f"🛑 STOP LOSS HIT - {symbol}",
                 "color": 0xFF0000,  # Red
-                "fields": [
-                    {
-                        "name": "Direction",
-                        "value": direction.upper(),
-                        "inline": True
-                    },
-                    {
-                        "name": "Exit Price",
-                        "value": self._format_price(price),
-                        "inline": True
-                    },
-                    {
-                        "name": "Total PnL",
-                        "value": f"${total_pnl:+.2f}",
-                        "inline": False
-                    }
-                ],
+                "fields": fields,
                 "footer": {
                     "text": "BitGet Futures Signal Bot"
                 },

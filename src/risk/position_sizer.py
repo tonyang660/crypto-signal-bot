@@ -69,11 +69,10 @@ class PositionSizer:
             Dict with contracts, notional value, leverage, risk amount, margin used
         """
         try:
-            # Get dynamic risk parameters based on current equity
-            risk_params = Config.get_dynamic_risk_params(account_equity)
-            risk_per_trade = risk_params['risk_per_trade']
+            # Use fixed 1% risk per trade
+            risk_per_trade = Config.RISK_PER_TRADE
             
-            # Calculate risk amount dynamically
+            # Calculate risk amount
             risk_amount = account_equity * risk_per_trade
             
             # Stop distance as percentage (market risk)

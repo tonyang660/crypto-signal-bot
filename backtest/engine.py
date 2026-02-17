@@ -59,6 +59,7 @@ class Position:
     tp2_hit: bool = False
     tp3_hit: bool = False
     remaining_percent: float = 100.0
+    contracts_remaining: float = 0.0  # Track actual asset amount remaining
     realized_pnl: float = 0.0
     
     # Adaptive stop tracking
@@ -283,11 +284,13 @@ class BacktestEngine:
                         
                         # Handle partial vs full protection
                         if BacktestConfig.ADAPTIVE_STOP_PARTIAL_PROTECTION:
-                            # Close 50% at breakeven, keep 50% running with original stop
-                            # For simplicity in backtest, we'll just update the stop to new level
-                            # and mark as triggered
+                            # Enable partial protection mode - 50% will close at breakeven if stop is hit
+                            # Remaining 50% continues with original stop
                             position.stop_loss = new_stop
                             position.adaptive_stop_triggered = True
+                            # Note: We set a flag here but don't close position yet
+                            # Position will close 50% at breakeven if stop is hit
+                            # This matches live bot behavior
                         else:
                             # Full protection: move stop to breakeven
                             position.stop_loss = new_stop
@@ -352,7 +355,14 @@ class BacktestEngine:
         
         # Calculate PnL for this portion
         close_percent = position.take_profits[tp_level]['close_percent']
-        portion_contracts = position.contracts * (close_percent / 100)
+        
+        # Check if trying to close more than remaining
+        if close_percent > position.remaining_percent:
+            close_percent = position.remaining_percent
+            self._log('debug', f"{current_time} {position.symbol}: {tp_level.upper()} close adjusted from {position.take_profits[tp_level]['close_percent']}% to {close_percent}% (remaining)")
+        
+        # Use contracts_remaining instead of total contracts
+        portion_contracts = position.contracts_remaining * (close_percent / position.remaining_percent)
         
         if position.direction == 'long':
             pnl = (exit_price - position.entry_price) * portion_contracts
@@ -369,6 +379,7 @@ class BacktestEngine:
         # Update position realized PnL (accumulate for final trade record)
         position.realized_pnl += pnl
         position.remaining_percent -= close_percent
+        position.contracts_remaining -= portion_contracts
         setattr(position, f'{tp_level}_hit', True)
         
         # ADD PNL TO EQUITY IMMEDIATELY (partial exit is realized profit)
@@ -377,7 +388,10 @@ class BacktestEngine:
         self.daily_pnl += pnl
         self.weekly_pnl += pnl
         
-        self._log('debug', f"{current_time} {position.symbol}: {tp_level.upper()} hit | P&L: ${pnl:.2f} | Equity: ${self.equity:.2f}")
+        # Extract base asset symbol (remove USDT)
+        base_asset = position.symbol[:-4]
+        
+        self._log('info', f"{current_time} {position.symbol}: {tp_level.upper()} hit | Closed {portion_contracts:.4f} {base_asset} ({close_percent:.1f}%) | P&L: ${pnl:+.2f} | Remaining: {position.contracts_remaining:.4f} {base_asset} ({position.remaining_percent:.1f}%) | Equity: ${self.equity:.2f}")
         
         # Trail stop
         if tp_level == 'tp1':
@@ -390,12 +404,81 @@ class BacktestEngine:
             # Move to breakeven
             position.stop_loss = position.entry_price
         
-        # If fully closed (all TPs hit), record the trade WITHOUT adding to equity again
+        # If fully closed (all TPs hit) or remaining too small, close position
         if position.remaining_percent <= 0:
             self._record_trade(position, current_time, exit_price, 'completed', add_to_equity=False)
+        elif position.remaining_percent < 20.0:
+            # Auto-close positions with less than 20% remaining
+            self._log('info', f"{current_time} {position.symbol}: Auto-closing small remaining position ({position.remaining_percent:.1f}%)")
+            self._close_position(position, current_time, exit_price, "auto_close_small_position", sl_hit=False)
     
     def _close_position(self, position: Position, exit_time: datetime, exit_price: float, reason: str, sl_hit: bool = False):
         """Close position and record trade"""
+        
+        # Check if adaptive stop partial protection should activate
+        if (sl_hit and 
+            BacktestConfig.ADAPTIVE_STOP_ENABLED and 
+            BacktestConfig.ADAPTIVE_STOP_PARTIAL_PROTECTION and 
+            getattr(position, 'adaptive_stop_triggered', False)):
+            
+            # Partial protection: close 50% at breakeven, keep 50% running with original stop
+            self._log('info', f"{exit_time} {position.symbol}: ⚡ Partial protection stop hit - exiting 50% at breakeven")
+            
+            # Exit 50% at breakeven
+            entry_price = position.entry_price
+            buffer = entry_price * BacktestConfig.ADAPTIVE_STOP_BREAKEVEN_BUFFER
+            
+            if position.direction == 'long':
+                protection_exit_price = entry_price + buffer
+            else:
+                protection_exit_price = entry_price - buffer
+            
+            # Calculate 50% portion
+            protection_close_pct = 50.0
+            partial_contracts = position.contracts_remaining * (protection_close_pct / 100)
+            
+            # Apply slippage
+            if BacktestConfig.USE_MARKET_ORDERS:
+                if position.direction == 'long':
+                    protection_exit_price = protection_exit_price * (1 - BacktestConfig.SLIPPAGE_PERCENT / 100)
+                else:
+                    protection_exit_price = protection_exit_price * (1 + BacktestConfig.SLIPPAGE_PERCENT / 100)
+            
+            # Calculate PnL for partial exit (should be near breakeven)
+            if position.direction == 'long':
+                partial_pnl = (protection_exit_price - position.entry_price) * partial_contracts
+            else:
+                partial_pnl = (position.entry_price - protection_exit_price) * partial_contracts
+            
+            # Subtract fees
+            exit_value = protection_exit_price * partial_contracts
+            fee = self._calculate_fee(exit_value)
+            partial_pnl -= fee
+            self.total_fees_paid += fee
+            self.total_volume_traded += exit_value
+            
+            # Update position state
+            position.realized_pnl += partial_pnl
+            position.remaining_percent -= protection_close_pct
+            position.contracts_remaining -= partial_contracts
+            
+            # Add partial PnL to equity
+            self.equity += partial_pnl
+            self.daily_pnl += partial_pnl
+            self.weekly_pnl += partial_pnl
+            
+            # Extract base asset symbol
+            base_asset = position.symbol[:-4]
+            self._log('info', f"{exit_time} {position.symbol}: 🛡️ Partial protection: {partial_contracts:.4f} {base_asset} (50%) closed at ${protection_exit_price:.4f} | P&L: ${partial_pnl:+.2f} | {position.contracts_remaining:.4f} {base_asset} (50%) continues")
+            
+            # Position continues with remaining 50% - don't close it
+            # Reset adaptive stop flag so it won't trigger again
+            position.adaptive_stop_triggered = False
+            
+            # Don't close the position - it continues with 50% remaining
+            return
+        
+        # Normal position close
         # Apply extra slippage on stop losses
         if sl_hit:
             if position.direction == 'long':
@@ -408,8 +491,13 @@ class BacktestEngine:
             else:
                 exit_price = exit_price * (1 + BacktestConfig.SLIPPAGE_PERCENT / 100)
         
-        # Calculate PnL for remaining position
-        remaining_contracts = position.contracts * (position.remaining_percent / 100)
+        # Use contracts_remaining for accurate tracking
+        remaining_contracts = position.contracts_remaining
+        
+        # Safeguard: if contracts_remaining is 0 or negative, calculate from remaining_percent
+        if remaining_contracts <= 0:
+            remaining_contracts = position.contracts * (position.remaining_percent / 100)
+            self._log('warning', f"{exit_time} {position.symbol}: contracts_remaining was {position.contracts_remaining}, calculated from percent: {remaining_contracts:.4f}")
         
         if position.direction == 'long':
             pnl = (exit_price - position.entry_price) * remaining_contracts
@@ -431,6 +519,10 @@ class BacktestEngine:
         self.equity += pnl
         self.daily_pnl += pnl
         self.weekly_pnl += pnl
+        
+        # Extract base asset symbol
+        base_asset = position.symbol[:-4]
+        self._log('info', f"{exit_time} {position.symbol}: Position closed ({reason}) | Closed {remaining_contracts:.4f} {base_asset} ({position.remaining_percent:.1f}%) | Exit P&L: ${pnl:+.2f} | Total P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
         
         # Record trade WITHOUT adding to equity again (already added incrementally)
         self._record_trade(position, exit_time, exit_price, reason, add_to_equity=False)
@@ -649,6 +741,11 @@ class BacktestEngine:
         self.total_fees_paid += entry_fee
         self.total_volume_traded += entry_value  # Track volume
         
+        # Deduct entry fee from equity immediately (realized cost)
+        self.equity -= entry_fee
+        self.daily_pnl -= entry_fee
+        self.weekly_pnl -= entry_fee
+        
         # Get entry ATR for adaptive stop monitoring
         entry_atr = data['primary']['atr'].iloc[-1]
         
@@ -666,6 +763,7 @@ class BacktestEngine:
             score=score,
             regime=regime,
             entry_reason=reason,
+            contracts_remaining=contracts,  # Initialize with full position
             realized_pnl=-entry_fee  # Start with negative (entry fee)
         )
         
@@ -674,7 +772,9 @@ class BacktestEngine:
         
         self.active_positions[symbol] = position
         
-        self._log('info', f"{entry_time} {symbol}: {direction.upper()} entry | Price: ${entry_price:.2f} | Score: {score} | Regime: {regime}")
+        # Extract base asset symbol
+        base_asset = symbol[:-4]
+        self._log('info', f"{entry_time} {symbol}: {direction.upper()} entry | Price: ${entry_price:.2f} | Position: {contracts:.4f} {base_asset} (100%) | Score: {score} | Regime: {regime}")
     
     def _get_mtf_data(self, symbol: str, current_time: datetime) -> Optional[Dict]:
         """Get multi-timeframe data up to current_time (NO FUTURE DATA)"""
