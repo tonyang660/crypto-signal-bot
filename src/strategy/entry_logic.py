@@ -24,10 +24,29 @@ class EntryLogic:
             primary_df = data['primary']
             entry_df = data['entry']
             
-            # 1. HTF Bias Filter (4H must be bullish)
+            # 1. HTF Bias Filter (4H must be bullish OR neutral with fast rally)
             htf_trend = MarketStructure.get_trend_direction(htf_df)
-            if htf_trend != 'bullish':
-                return {'valid': False, 'reason': f'HTF trend is {htf_trend}, not bullish'}
+            
+            if htf_trend == 'bearish':
+                # Never go long in bearish HTF
+                return {'valid': False, 'reason': f'HTF trend is bearish, opposing direction'}
+            
+            elif htf_trend == 'neutral':
+                # Allow neutral HTF IF we detect fast rally (explosive PRIMARY momentum)
+                # Import here to avoid circular dependency
+                from src.strategy.signal_scorer import SignalScorer
+                
+                velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, 'long')
+                
+                # Require >3% move in 4 hours AND strong PRIMARY trend
+                if not (velocity > 0.03 and is_strong_primary):
+                    return {'valid': False, 'reason': f'HTF neutral without fast rally confirmation (velocity: {velocity*100:+.1f}%)'}
+                
+                # Fast rally detected - proceed with entry checks
+                logger.info(f"Fast rally override: HTF neutral but velocity {velocity*100:+.1f}% in 4h, {primary_reason}")
+            
+            # If HTF is bullish or neutral with fast rally, continue...
             
             # 2. Volatility Filter
             current_atr = primary_df['atr'].iloc[-1]
@@ -103,10 +122,28 @@ class EntryLogic:
             primary_df = data['primary']
             entry_df = data['entry']
             
-            # 1. HTF Bias (must be bearish)
+            # 1. HTF Bias (must be bearish OR neutral with fast correction)
             htf_trend = MarketStructure.get_trend_direction(htf_df)
-            if htf_trend != 'bearish':
-                return {'valid': False, 'reason': f'HTF trend is {htf_trend}, not bearish'}
+            
+            if htf_trend == 'bullish':
+                # Never go short in bullish HTF
+                return {'valid': False, 'reason': f'HTF trend is bullish, opposing direction'}
+            
+            elif htf_trend == 'neutral':
+                # Allow neutral HTF IF we detect fast correction (explosive downward PRIMARY momentum)
+                from src.strategy.signal_scorer import SignalScorer
+                
+                velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, 'short')
+                
+                # Require <-3% move in 4 hours AND strong PRIMARY trend
+                if not (velocity < -0.03 and is_strong_primary):
+                    return {'valid': False, 'reason': f'HTF neutral without fast correction confirmation (velocity: {velocity*100:+.1f}%)'}
+                
+                # Fast correction detected - proceed with entry checks
+                logger.info(f"Fast correction override: HTF neutral but velocity {velocity*100:+.1f}% in 4h, {primary_reason}")
+            
+            # If HTF is bearish or neutral with fast correction, continue...
             
             # 2. Volatility Filter
             current_atr = primary_df['atr'].iloc[-1]

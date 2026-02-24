@@ -7,6 +7,91 @@ class SignalScorer:
     """Calculate signal quality score (0-100)"""
     
     @staticmethod
+    def detect_price_velocity(
+        df: pd.DataFrame,
+        lookback_bars: int = 16
+    ) -> float:
+        """
+        Calculate price velocity (rate of change) over lookback period
+        
+        Args:
+            df: DataFrame with OHLC data
+            lookback_bars: Number of bars to measure velocity over (default 16 = 4 hours on 15M)
+        
+        Returns:
+            Price change percentage (e.g., 0.05 = 5% move)
+        """
+        try:
+            if len(df) < lookback_bars + 1:
+                return 0.0
+            
+            price_current = df['close'].iloc[-1]
+            price_past = df['close'].iloc[-lookback_bars]
+            
+            if price_past == 0:
+                return 0.0
+            
+            velocity = (price_current - price_past) / price_past
+            return velocity
+            
+        except Exception as e:
+            logger.error(f"Error calculating price velocity: {e}")
+            return 0.0
+    
+    @staticmethod
+    def detect_strong_primary_trend(
+        primary_df: pd.DataFrame,
+        direction: str
+    ) -> tuple:
+        """
+        Detect if PRIMARY (15M) shows strong trending characteristics
+        
+        Returns:
+            (is_strong: bool, reason: str)
+        """
+        try:
+            # 1. Check PRIMARY trend direction
+            primary_trend = MarketStructure.get_trend_direction(primary_df)
+            
+            if direction == 'long' and primary_trend != 'bullish':
+                return False, f"PRIMARY not bullish ({primary_trend})"
+            elif direction == 'short' and primary_trend != 'bearish':
+                return False, f"PRIMARY not bearish ({primary_trend})"
+            
+            # 2. Check MACD acceleration (strong momentum)
+            macd_hist = primary_df['macd_hist'].tail(3).values
+            if len(macd_hist) < 3:
+                return False, "Insufficient MACD data"
+            
+            if direction == 'long':
+                # Require accelerating upward momentum
+                if not (macd_hist[-1] > macd_hist[-2] > macd_hist[-3] and macd_hist[-1] > 0):
+                    return False, "MACD not accelerating upward"
+            else:
+                # Require accelerating downward momentum
+                if not (macd_hist[-1] < macd_hist[-2] < macd_hist[-3] and macd_hist[-1] < 0):
+                    return False, "MACD not accelerating downward"
+            
+            # 3. Check Break of Structure on PRIMARY
+            try:
+                if hasattr(MarketStructure, 'detect_break_of_structure'):
+                    bos_detected, bars_ago, _ = MarketStructure.detect_break_of_structure(
+                        primary_df, direction, lookback=20, confirmation_bars=15
+                    )
+                    if bos_detected and bars_ago <= 10:
+                        # Recent BOS is very strong signal
+                        return True, f"Strong BOS + accelerating MACD (BOS {bars_ago} bars ago)"
+            except Exception:
+                pass
+            
+            # If no BOS but has acceleration, still consider it strong
+            return True, "Accelerating MACD + PRIMARY trend aligned"
+            
+        except Exception as e:
+            logger.error(f"Error detecting strong PRIMARY trend: {e}")
+            return False, str(e)
+    
+    @staticmethod
     def calculate_score(
         data: Dict[str, pd.DataFrame],
         direction: str  # 'long' or 'short'
@@ -55,7 +140,21 @@ class SignalScorer:
                         score += 12
                         
                 elif htf_trend == 'neutral':
-                    score += 8
+                    # FAST RALLY DETECTION: If HTF neutral but PRIMARY shows explosive momentum
+                    # Check price velocity and PRIMARY strength
+                    velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                    is_strong_primary, _ = SignalScorer.detect_strong_primary_trend(primary_df, direction)
+                    
+                    # If fast rally detected (>3% in 4 hours + strong PRIMARY), award partial credit
+                    if velocity > 0.03 and is_strong_primary:
+                        # Award 18-20 points for explosive bullish move (HTF hasn't caught up yet)
+                        if velocity > 0.05:  # >5% in 4 hours = very strong
+                            score += 20
+                        else:  # 3-5% in 4 hours = strong
+                            score += 18
+                    else:
+                        # Standard neutral scoring
+                        score += 8
             
             elif direction == 'short':
                 if htf_trend == 'bearish':
@@ -73,8 +172,22 @@ class SignalScorer:
                             score += 12
                     else:
                         score += 12
+                        
                 elif htf_trend == 'neutral':
-                    score += 8
+                    # FAST CORRECTION DETECTION: If HTF neutral but PRIMARY shows explosive downward momentum
+                    velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                    is_strong_primary, _ = SignalScorer.detect_strong_primary_trend(primary_df, direction)
+                    
+                    # If fast correction detected (<-3% in 4 hours + strong PRIMARY), award partial credit
+                    if velocity < -0.03 and is_strong_primary:
+                        # Award 18-20 points for explosive bearish move
+                        if velocity < -0.05:  # <-5% in 4 hours = very strong
+                            score += 20
+                        else:  # -3% to -5% in 4 hours = strong
+                            score += 18
+                    else:
+                        # Standard neutral scoring
+                        score += 8
             
             # === 2. Momentum Quality (0-20 points) ===
             macd_hist = primary_df['macd_hist'].tail(3).values
@@ -266,10 +379,26 @@ class SignalScorer:
                         breakdown['htf_alignment']['points'] = 12
                         breakdown['htf_alignment']['details'] = 'Bullish trend'
                         score += 12
+                        
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 8
-                    breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 8
+                    # FAST RALLY DETECTION: Check for explosive momentum on PRIMARY
+                    velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                    is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, direction)
+                    
+                    if velocity > 0.03 and is_strong_primary:
+                        # Fast rally detected - award partial credit
+                        if velocity > 0.05:
+                            breakdown['htf_alignment']['points'] = 20
+                            breakdown['htf_alignment']['details'] = f'FAST RALLY: +{velocity*100:.1f}% in 4h, {primary_reason}'
+                            score += 20
+                        else:
+                            breakdown['htf_alignment']['points'] = 18
+                            breakdown['htf_alignment']['details'] = f'FAST RALLY: +{velocity*100:.1f}% in 4h, {primary_reason}'
+                            score += 18
+                    else:
+                        breakdown['htf_alignment']['points'] = 8
+                        breakdown['htf_alignment']['details'] = f'HTF neutral, weak alignment (velocity: {velocity*100:+.1f}%)'
+                        score += 8
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             
@@ -297,10 +426,26 @@ class SignalScorer:
                         breakdown['htf_alignment']['points'] = 12
                         breakdown['htf_alignment']['details'] = 'Bearish trend'
                         score += 12
+                        
                 elif htf_trend == 'neutral':
-                    breakdown['htf_alignment']['points'] = 8
-                    breakdown['htf_alignment']['details'] = 'HTF neutral, weak alignment'
-                    score += 8
+                    # FAST CORRECTION DETECTION: Check for explosive downward momentum on PRIMARY
+                    velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                    is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, direction)
+                    
+                    if velocity < -0.03 and is_strong_primary:
+                        # Fast correction detected - award partial credit
+                        if velocity < -0.05:
+                            breakdown['htf_alignment']['points'] = 20
+                            breakdown['htf_alignment']['details'] = f'FAST CORRECTION: {velocity*100:.1f}% in 4h, {primary_reason}'
+                            score += 20
+                        else:
+                            breakdown['htf_alignment']['points'] = 18
+                            breakdown['htf_alignment']['details'] = f'FAST CORRECTION: {velocity*100:.1f}% in 4h, {primary_reason}'
+                            score += 18
+                    else:
+                        breakdown['htf_alignment']['points'] = 8
+                        breakdown['htf_alignment']['details'] = f'HTF neutral, weak alignment (velocity: {velocity*100:+.1f}%)'
+                        score += 8
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
             
