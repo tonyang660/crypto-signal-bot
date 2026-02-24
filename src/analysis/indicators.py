@@ -90,6 +90,15 @@ class Indicators:
         # RSI
         df['rsi'] = Indicators.calculate_rsi(df, Config.RSI_PERIOD)
         
+        # ADX (for regime detection - calculate once and cache)
+        adx_indicator = ADXIndicator(
+            high=df['high'],
+            low=df['low'],
+            close=df['close'],
+            window=14
+        )
+        df['adx'] = adx_indicator.adx()
+        
         # Volume SMA (100 periods = ~8 hours on 5m, captures full trading session)
         df['volume_sma'] = df['volume'].rolling(100).mean()
         

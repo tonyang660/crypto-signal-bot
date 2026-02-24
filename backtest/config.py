@@ -18,7 +18,7 @@ class BacktestConfig:
     # Add 1 month warmup period for indicators (200+ candles needed for EMA200)
     START_DATE = datetime(2024, 12, 15)  # Start 1 month earlier for warmup
     WARMUP_DATE = datetime(2025, 1, 1)  # Begin actual backtest here (after warmup)
-    END_DATE = datetime(2025, 12, 31)  # End of backtest period
+    END_DATE = datetime(2025, 12, 30)  # End of backtest period
     
     # ==================== INITIAL CONDITIONS ====================
     INITIAL_CAPITAL = Config.INITIAL_CAPITAL  # Use live bot capital
@@ -104,6 +104,11 @@ class BacktestConfig:
     SIGNAL_THRESHOLD_NORMAL = Config.SIGNAL_THRESHOLD_NORMAL
     SIGNAL_THRESHOLD_DRAWDOWN = Config.SIGNAL_THRESHOLD_DRAWDOWN
     
+    # BTC-specific parameters
+    BTC_SCORE_THRESHOLD = Config.BTC_SCORE_THRESHOLD
+    BTC_ATR_MULTIPLIER = Config.BTC_ATR_MULTIPLIER
+    BTC_SKIP_CHOPPY_REGIMES = Config.BTC_SKIP_CHOPPY_REGIMES
+    
     # ==================== RISK MANAGEMENT ====================
     # Use same parameters as live bot
     RISK_PER_TRADE = Config.RISK_PER_TRADE
@@ -121,6 +126,18 @@ class BacktestConfig:
     ADAPTIVE_STOP_REGIME_CHANGE = Config.ADAPTIVE_STOP_REGIME_CHANGE
     ADAPTIVE_STOP_BREAKEVEN_BUFFER = Config.ADAPTIVE_STOP_BREAKEVEN_BUFFER
     ADAPTIVE_STOP_PARTIAL_PROTECTION = Config.ADAPTIVE_STOP_PARTIAL_PROTECTION
+    
+    # ==================== TIME-BASED EXIT ====================
+    # Close profitable positions that remain open too long
+    TIME_BASED_EXIT_ENABLED = True
+    TIME_BASED_EXIT_HOURS = 24  # Close profitable positions after 24 hours
+    TIME_BASED_EXIT_MIN_PROFIT_R = 0.2  # Only close if at least 0.2R profit
+    
+    # ==================== PERFORMANCE OPTIMIZATION ====================
+    # Indicator caching: recalculate HTF indicators only when HTF candle closes
+    ENABLE_INDICATOR_CACHING = True
+    # Data windowing: limit loaded candles per symbol (0 = load all)
+    MAX_CANDLES_PER_SYMBOL = 5000  # ~17 days on 5m timeframe (0 = unlimited)
     
     # ==================== WALK-FORWARD TESTING ====================
     # Split data for validation

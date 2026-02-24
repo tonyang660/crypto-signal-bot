@@ -22,8 +22,8 @@ class RegimeDetector:
             
             atr_ratio = atr / atr_avg
             
-            # Calculate ADX for trend strength
-            adx = Indicators.calculate_adx(df)
+            # Get ADX from dataframe (pre-calculated with indicators)
+            adx = df['adx'].iloc[-1]
             
             # High Volatility (ATR spike)
             if atr_ratio > 1.5:

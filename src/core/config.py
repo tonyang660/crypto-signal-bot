@@ -147,6 +147,11 @@ class Config:
     SIGNAL_THRESHOLD_DRAWDOWN = 85
     SIGNAL_THRESHOLD_HOT_STREAK = 65
     
+    # BTC-specific thresholds (BTC needs higher quality due to high volatility)
+    BTC_SCORE_THRESHOLD = 80  # Higher quality required for BTC
+    BTC_ATR_MULTIPLIER = 2.0  # Tighter stops for BTC (vs 2.5 for alts)
+    BTC_SKIP_CHOPPY_REGIMES = True  # Only trade BTC in trending markets
+    
     # Take Profit Ratios (as Risk multiples)
     TP1_RATIO = 1.5
     TP1_CLOSE_PERCENT = 50  # Close 50% at TP1

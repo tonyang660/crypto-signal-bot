@@ -123,6 +123,16 @@ class BacktestEngine:
         self.total_slippage_cost = 0.0
         self.total_volume_traded = 0.0  # Track total volume (entry + exit values)
         
+        # Performance optimization: Indicator caching
+        self.htf_indicator_cache: Dict[str, Tuple[datetime, pd.DataFrame]] = {}  # {symbol: (last_htf_time, indicators_df)}
+        self.last_htf_candle_time: Dict[str, datetime] = {}  # Track last HTF candle time per symbol
+        self.primary_indicator_cache: Dict[str, Tuple[datetime, pd.DataFrame]] = {}  # {symbol: (last_primary_time, indicators_df)}
+        self.last_primary_candle_time: Dict[str, datetime] = {}  # Track last primary candle time per symbol
+        self.entry_indicator_cache: Dict[str, Tuple[datetime, pd.DataFrame]] = {}  # {symbol: (last_entry_time, indicators_df)}
+        
+        # Performance optimization: MTF data caching (cache entire data windows per candle)
+        self.mtf_data_cache: Dict[str, Tuple[datetime, Dict]] = {}  # {symbol: (current_time, mtf_data)}
+        
         if BacktestConfig.ENABLE_LOGGING:
             logger.info(f"Backtest initialized with ${self.equity:.2f}")
     
@@ -202,7 +212,8 @@ class BacktestEngine:
         # Process each candle with progress bar
         iterator = enumerate(sorted_dates)
         if BacktestConfig.SHOW_PROGRESS_BAR and TQDM_AVAILABLE:
-            iterator = tqdm(iterator, total=len(sorted_dates), desc="Running backtest", unit="candles", leave=True, ncols=100)
+            # Update progress bar at most every 1 second to reduce overhead
+            iterator = tqdm(iterator, total=len(sorted_dates), desc="Running backtest", unit="candles", leave=True, ncols=100, mininterval=1.0, miniters=100)
         
         for i, current_time in iterator:
             # Daily reset
@@ -245,7 +256,9 @@ class BacktestEngine:
         """Update all active positions - check for TP/SL hits and adaptive stops"""
         symbols_to_close = []
         
-        for symbol, position in self.active_positions.items():
+        # Sort symbols for deterministic order (ensures reproducible results)
+        for symbol in sorted(self.active_positions.keys()):
+            position = self.active_positions[symbol]
             # Get current candle
             if symbol not in self.data:
                 continue
@@ -260,15 +273,40 @@ class BacktestEngine:
             low = candle['low']
             close = candle['close']
             
+            # === TIME-BASED EXIT CHECK (for stale profitable positions) ===
+            if BacktestConfig.TIME_BASED_EXIT_ENABLED:
+                duration = (current_time - position.entry_time).total_seconds() / 3600  # hours
+                
+                if duration >= BacktestConfig.TIME_BASED_EXIT_HOURS:
+                    # Calculate current profit in R multiples
+                    if position.direction == 'long':
+                        profit_distance = close - position.entry_price
+                        stop_distance = position.entry_price - position.stop_loss
+                    else:
+                        profit_distance = position.entry_price - close
+                        stop_distance = position.stop_loss - position.entry_price
+                    
+                    profit_r = profit_distance / stop_distance if stop_distance > 0 else 0
+                    
+                    # Close if profitable enough
+                    if profit_r >= BacktestConfig.TIME_BASED_EXIT_MIN_PROFIT_R:
+                        self._log('info', f"{current_time} {symbol}: ⏰ Time-based exit triggered after {duration:.1f}h | Profit: {profit_r:.2f}R")
+                        self._close_position(position, current_time, close, "time_based_exit", sl_hit=False)
+                        symbols_to_close.append(symbol)
+                        continue
+            
             # === ADAPTIVE STOP CHECK (before checking TP/SL hits) ===
             # Only check if enabled and position hasn't triggered adaptive stop yet
             if BacktestConfig.ADAPTIVE_STOP_ENABLED and not getattr(position, 'adaptive_stop_triggered', False):
                 # Get current market data
                 data = self._get_mtf_data(symbol, current_time)
                 if data:
-                    # Add indicators
-                    for tf in data:
-                        data[tf] = Indicators.add_all_indicators(data[tf])
+                    # OPTIMIZATION: Use cached indicators instead of recalculating every candle
+                    # HTF indicators cached (recalc only when 4H candle closes - every 48 entry candles)
+                    data['htf'] = self._get_htf_indicators_cached(symbol, data['htf'], current_time)
+                    # Primary indicators cached (recalc only when 15m candle closes - every 3 entry candles)
+                    data['primary'] = self._get_primary_indicators_cached(symbol, data['primary'], current_time)
+                    # Entry timeframe not needed for adaptive stop check (skip entirely)
                     
                     current_atr = data['primary']['atr'].iloc[-1]
                     current_regime = RegimeDetector.detect_regime(data['primary'])
@@ -317,12 +355,12 @@ class BacktestEngine:
             
             # Check TP hits
             if tp3_hit:
-                self._handle_tp_hit(position, current_time, 'tp3', position.take_profits['tp3']['price'])
+                self._handle_tp_hit(position, current_time, 'tp3', position.take_profits['tp3']['price'], close)
                 symbols_to_close.append(symbol)
             elif tp2_hit:
-                self._handle_tp_hit(position, current_time, 'tp2', position.take_profits['tp2']['price'])
+                self._handle_tp_hit(position, current_time, 'tp2', position.take_profits['tp2']['price'], close)
             elif tp1_hit:
-                self._handle_tp_hit(position, current_time, 'tp1', position.take_profits['tp1']['price'])
+                self._handle_tp_hit(position, current_time, 'tp1', position.take_profits['tp1']['price'], close)
             
             # Check SL hit
             if sl_hit and symbol not in symbols_to_close:
@@ -334,7 +372,7 @@ class BacktestEngine:
             if symbol in self.active_positions:
                 del self.active_positions[symbol]
     
-    def _handle_tp_hit(self, position: Position, current_time: datetime, tp_level: str, tp_price: float):
+    def _handle_tp_hit(self, position: Position, current_time: datetime, tp_level: str, tp_price: float, current_market_price: float):
         """Handle take profit hit
         
         CRITICAL PNL TRACKING:
@@ -408,9 +446,10 @@ class BacktestEngine:
         if position.remaining_percent <= 0:
             self._record_trade(position, current_time, exit_price, 'completed', add_to_equity=False)
         elif position.remaining_percent < 20.0:
-            # Auto-close positions with less than 20% remaining
+            # Auto-close positions with less than 20% remaining at CURRENT MARKET PRICE (not TP price)
             self._log('info', f"{current_time} {position.symbol}: Auto-closing small remaining position ({position.remaining_percent:.1f}%)")
-            self._close_position(position, current_time, exit_price, "auto_close_small_position", sl_hit=False)
+            # Pass current market price (without slippage - _close_position will apply it)
+            self._close_position(position, current_time, current_market_price, "auto_close_small_position", sl_hit=False)
     
     def _close_position(self, position: Position, exit_time: datetime, exit_price: float, reason: str, sl_hit: bool = False):
         """Close position and record trade"""
@@ -554,12 +593,16 @@ class BacktestEngine:
         
         self.closed_trades.append(trade)
         
+        # DEBUG: Track equity before/after
+        equity_before = self.equity if not add_to_equity else self.equity
+        
         # Only add to equity if not already added incrementally
         # (Prevents duplicate additions when partial exits already updated equity)
         if add_to_equity:
             self.equity += position.realized_pnl
             self.daily_pnl += position.realized_pnl
             self.weekly_pnl += position.realized_pnl
+            self._log('warning', f"{exit_time} {position.symbol}: ⚠️ add_to_equity=True! Equity changed from ${equity_before:.2f} to ${self.equity:.2f} | P&L: ${position.realized_pnl:+.2f}")
         
         # Track consecutive losses (based on TOTAL trade PnL including all fees)
         if position.realized_pnl < 0:
@@ -581,6 +624,131 @@ class BacktestEngine:
         
         self._log('info', f"{exit_time} {position.symbol}: Trade closed | {reason} | Total P&L: ${position.realized_pnl:+.2f} | Equity: ${self.equity:.2f}")
     
+    def _get_htf_indicators_cached(self, symbol: str, htf_df: pd.DataFrame, current_time: datetime) -> pd.DataFrame:
+        """
+        Get HTF indicators with caching optimization
+        
+        Only recalculates indicators when HTF candle closes, otherwise returns cached version.
+        This significantly speeds up backtesting since HTF (4H) doesn't change every 5m scan.
+        
+        Args:
+            symbol: Trading symbol
+            htf_df: HTF dataframe up to current_time
+            current_time: Current backtest time
+            
+        Returns:
+            HTF dataframe with indicators
+        """
+        if not BacktestConfig.ENABLE_INDICATOR_CACHING:
+            # Caching disabled, always recalculate
+            return Indicators.add_all_indicators(htf_df)
+        
+        # Determine HTF candle time (round to HTF interval)
+        # For 4H timeframe, round to 4-hour boundaries
+        htf_interval_minutes = 240  # 4H = 240 minutes
+        htf_candle_time = current_time.replace(minute=0, second=0, microsecond=0)
+        htf_candle_time = htf_candle_time.replace(hour=(current_time.hour // 4) * 4)
+        
+        # Check if we have cached indicators for this HTF candle
+        if symbol in self.htf_indicator_cache:
+            cached_time, cached_df = self.htf_indicator_cache[symbol]
+            
+            # If HTF candle hasn't closed yet, use cached indicators
+            if cached_time == htf_candle_time and len(cached_df) == len(htf_df):
+                self._log('debug', f"{current_time} {symbol}: Using cached HTF indicators")
+                return cached_df
+        
+        # HTF candle closed or first time - recalculate indicators
+        self._log('debug', f"{current_time} {symbol}: Recalculating HTF indicators (new candle)")
+        htf_with_indicators = Indicators.add_all_indicators(htf_df.copy())
+        
+        # Cache for future use
+        self.htf_indicator_cache[symbol] = (htf_candle_time, htf_with_indicators)
+        self.last_htf_candle_time[symbol] = htf_candle_time
+        
+        return htf_with_indicators
+    
+    def _get_primary_indicators_cached(self, symbol: str, primary_df: pd.DataFrame, current_time: datetime) -> pd.DataFrame:
+        """
+        Get primary timeframe indicators with caching optimization
+        
+        Only recalculates indicators when primary candle closes (every 15m).
+        This speeds up adaptive stop checks that run every 5m.
+        
+        Args:
+            symbol: Trading symbol
+            primary_df: Primary timeframe dataframe up to current_time
+            current_time: Current backtest time
+            
+        Returns:
+            Primary dataframe with indicators
+        """
+        if not BacktestConfig.ENABLE_INDICATOR_CACHING:
+            # Caching disabled, always recalculate
+            return Indicators.add_all_indicators(primary_df)
+        
+        # Determine primary candle time (round to 15m interval)
+        primary_interval_minutes = 15  # 15m primary timeframe
+        primary_candle_time = current_time.replace(second=0, microsecond=0)
+        primary_candle_time = primary_candle_time.replace(minute=(current_time.minute // 15) * 15)
+        
+        # Check if we have cached indicators for this primary candle
+        if symbol in self.primary_indicator_cache:
+            cached_time, cached_df = self.primary_indicator_cache[symbol]
+            
+            # If primary candle hasn't closed yet, use cached indicators
+            if cached_time == primary_candle_time and len(cached_df) == len(primary_df):
+                self._log('debug', f"{current_time} {symbol}: Using cached primary indicators")
+                return cached_df
+        
+        # Primary candle closed or first time - recalculate indicators
+        self._log('debug', f"{current_time} {symbol}: Recalculating primary indicators (new candle)")
+        primary_with_indicators = Indicators.add_all_indicators(primary_df.copy())
+        
+        # Cache for future use
+        self.primary_indicator_cache[symbol] = (primary_candle_time, primary_with_indicators)
+        self.last_primary_candle_time[symbol] = primary_candle_time
+        
+        return primary_with_indicators
+    
+    def _get_entry_indicators_cached(self, symbol: str, entry_df: pd.DataFrame, current_time: datetime) -> pd.DataFrame:
+        """
+        Get entry timeframe indicators with caching optimization
+        
+        Only recalculates indicators when entry candle closes (every 5m).
+        Since we scan once per 5m candle, we can cache for the current timestamp.
+        
+        Args:
+            symbol: Trading symbol
+            entry_df: Entry timeframe dataframe up to current_time
+            current_time: Current backtest time
+            
+        Returns:
+            Entry dataframe with indicators
+        """
+        if not BacktestConfig.ENABLE_INDICATOR_CACHING:
+            # Caching disabled, always recalculate
+            return Indicators.add_all_indicators(entry_df)
+        
+        # For entry timeframe (5m), cache by exact timestamp
+        # Check if we have cached indicators for this entry candle
+        if symbol in self.entry_indicator_cache:
+            cached_time, cached_df = self.entry_indicator_cache[symbol]
+            
+            # If same timestamp and same data length, use cached indicators
+            if cached_time == current_time and len(cached_df) == len(entry_df):
+                self._log('debug', f"{current_time} {symbol}: Using cached entry indicators")
+                return cached_df
+        
+        # New candle or first time - recalculate indicators
+        self._log('debug', f"{current_time} {symbol}: Recalculating entry indicators")
+        entry_with_indicators = Indicators.add_all_indicators(entry_df.copy())
+        
+        # Cache for future use
+        self.entry_indicator_cache[symbol] = (current_time, entry_with_indicators)
+        
+        return entry_with_indicators
+    
     def _scan_for_signals(self, current_time: datetime):
         """Scan for new trading signals (uses EXACT live bot logic)"""
         # === PHASE 1: BTC REGIME CHECK (Market-wide filter) ===
@@ -600,7 +768,8 @@ class BacktestEngine:
                         btc_position_mult = 0.9
                         btc_max_signals_adj = 0
                     else:
-                        btc_data['htf'] = Indicators.add_all_indicators(btc_data['htf'])
+                        # Use cached HTF indicators for BTC regime check
+                        btc_data['htf'] = self._get_htf_indicators_cached('BTCUSDT', btc_data['htf'], current_time)
                         btc_regime_info = RegimeDetector.check_btc_regime(btc_data['htf'])
                         
                         # Apply BTC regime adjustments
@@ -624,8 +793,8 @@ class BacktestEngine:
             return
         
         # === PHASE 2: SCAN INDIVIDUAL SYMBOLS ===
-        # Scan all symbols in the loaded data
-        for symbol in self.data.keys():
+        # Scan all symbols in the loaded data (sorted for deterministic order)
+        for symbol in sorted(self.data.keys()):
             # Skip if position already exists
             if symbol in self.active_positions:
                 continue
@@ -649,9 +818,13 @@ class BacktestEngine:
                     self._log('debug', f"{current_time} {symbol}: Insufficient data (HTF: {len(data['htf'])}, Primary: {len(data['primary'])}, Entry: {len(data['entry'])})")
                     continue
                 
-                # Add indicators
-                for tf in data:
-                    data[tf] = Indicators.add_all_indicators(data[tf])
+                # Add indicators with caching optimization
+                # HTF indicators cached (only recalc when HTF candle closes - every 48 entry candles)
+                data['htf'] = self._get_htf_indicators_cached(symbol, data['htf'], current_time)
+                # Primary indicators cached (only recalc when primary candle closes - every 3 entry candles)
+                data['primary'] = self._get_primary_indicators_cached(symbol, data['primary'], current_time)
+                # Entry timeframe cached (recalc only once per 5m candle, shared across all symbols at same timestamp)
+                data['entry'] = self._get_entry_indicators_cached(symbol, data['entry'], current_time)
                 
                 # Check individual symbol regime
                 regime = RegimeDetector.detect_regime(data['primary'])
@@ -706,7 +879,7 @@ class BacktestEngine:
                 entry_price = entry_price * (1 - BacktestConfig.SLIPPAGE_PERCENT / 100)
         
         # Calculate stop loss
-        stop_loss = StopTPCalculator.calculate_stop_loss(data, direction, entry_price)
+        stop_loss = StopTPCalculator.calculate_stop_loss(data, direction, entry_price, symbol)
         
         # Calculate take profits (regime-adjusted)
         take_profits = StopTPCalculator.calculate_take_profits(entry_price, stop_loss, direction, regime)
@@ -777,9 +950,18 @@ class BacktestEngine:
         self._log('info', f"{entry_time} {symbol}: {direction.upper()} entry | Price: ${entry_price:.2f} | Position: {contracts:.4f} {base_asset} (100%) | Score: {score} | Regime: {regime}")
     
     def _get_mtf_data(self, symbol: str, current_time: datetime) -> Optional[Dict]:
-        """Get multi-timeframe data up to current_time (NO FUTURE DATA)"""
+        """
+        Get multi-timeframe data up to current_time (NO FUTURE DATA)
+        OPTIMIZED: Caches result per symbol per candle to avoid repeated dataframe operations
+        """
         if symbol not in self.data:
             return None
+        
+        # Check cache first - if we already computed this for this timestamp, return cached result
+        if symbol in self.mtf_data_cache:
+            cached_time, cached_data = self.mtf_data_cache[symbol]
+            if cached_time == current_time:
+                return cached_data
         
         try:
             # Get data for each timeframe
@@ -787,19 +969,36 @@ class BacktestEngine:
             primary_df = self.data[symbol][BacktestConfig.PRIMARY_TIMEFRAME]
             entry_df = self.data[symbol][BacktestConfig.ENTRY_TIMEFRAME]
             
-            # Slice data up to current time (inclusive)
-            htf_data = htf_df[htf_df.index <= current_time].tail(200)
-            primary_data = primary_df[primary_df.index <= current_time].tail(200)
-            entry_data = entry_df[entry_df.index <= current_time].tail(200)
+            # OPTIMIZATION: Use searchsorted for O(log n) instead of boolean indexing O(n)
+            # Find position where current_time would fit in sorted index
+            htf_idx = htf_df.index.searchsorted(current_time, side='right')
+            primary_idx = primary_df.index.searchsorted(current_time, side='right')
+            entry_idx = entry_df.index.searchsorted(current_time, side='right')
+            
+            # Slice last 200 candles using iloc (O(1) instead of tail after boolean mask)
+            htf_start = max(0, htf_idx - 200)
+            primary_start = max(0, primary_idx - 200)
+            entry_start = max(0, entry_idx - 200)
+            
+            htf_data = htf_df.iloc[htf_start:htf_idx]
+            primary_data = primary_df.iloc[primary_start:primary_idx]
+            entry_data = entry_df.iloc[entry_start:entry_idx]
             
             if htf_data.empty or primary_data.empty or entry_data.empty:
                 return None
             
-            return {
-                'htf': htf_data.copy(),
-                'primary': primary_data.copy(),
-                'entry': entry_data.copy()
+            # Store result without .copy() - we'll cache the reference
+            # This is safe because we never modify the slices
+            result = {
+                'htf': htf_data,
+                'primary': primary_data,
+                'entry': entry_data
             }
+            
+            # Cache for this symbol+timestamp
+            self.mtf_data_cache[symbol] = (current_time, result)
+            
+            return result
             
         except Exception as e:
             self._log('error', f"Error getting MTF data for {symbol}: {e}")
@@ -977,6 +1176,16 @@ class BacktestEngine:
         total_pnl = trades_df['pnl'].sum()
         gross_profit = wins['pnl'].sum() if len(wins) > 0 else 0
         gross_loss = abs(losses['pnl'].sum()) if len(losses) > 0 else 0
+        
+        # VALIDATION: Check if equity change matches total P&L
+        actual_equity_change = self.equity - self.initial_equity
+        pnl_discrepancy = abs(actual_equity_change - total_pnl)
+        if pnl_discrepancy > 1.0:  # More than $1 discrepancy
+            logger.warning(f"⚠️ EQUITY MISMATCH: Equity change (${actual_equity_change:.2f}) != Total P&L (${total_pnl:.2f}) | Difference: ${pnl_discrepancy:.2f}")
+            logger.warning(f"   Initial equity: ${self.initial_equity:.2f}")
+            logger.warning(f"   Final equity: ${self.equity:.2f}")
+            logger.warning(f"   Sum of all trade P&Ls: ${total_pnl:.2f}")
+            logger.warning(f"   Total fees tracked separately: ${self.total_fees_paid:.2f}")
         
         avg_win = wins['pnl'].mean() if len(wins) > 0 else 0
         avg_loss = losses['pnl'].mean() if len(losses) > 0 else 0

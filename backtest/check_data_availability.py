@@ -181,7 +181,8 @@ class DataAvailabilityChecker:
             if has_all_timeframes:
                 available.append(symbol)
         
-        return available
+        # Sort for deterministic order (ensures reproducible backtest results)
+        return sorted(available)
     
     def get_missing_data_report(
         self,

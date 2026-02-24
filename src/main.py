@@ -217,9 +217,20 @@ class SignalBot:
             # Check market regime (individual symbol)
             regime = RegimeDetector.detect_regime(data['primary'])
             
+            # BTC-specific regime filter
+            if symbol == 'BTCUSDT' and Config.BTC_SKIP_CHOPPY_REGIMES:
+                if regime in ['choppy', 'ranging', 'low_volatility']:
+                    logger.info(f"{symbol}: ❌ BTC in choppy regime ({regime}) - skipped for quality")
+                    return
+            
             # Get base score threshold
             account_state = self.risk_manager.get_account_state()
             base_threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
+            
+            # BTC-specific higher threshold
+            if symbol == 'BTCUSDT':
+                base_threshold = max(base_threshold, Config.BTC_SCORE_THRESHOLD)
+                logger.debug(f"{symbol}: Using BTC-specific threshold: {Config.BTC_SCORE_THRESHOLD}")
             
             # Apply BTC regime adjustment to threshold
             threshold = base_threshold + btc_threshold_adj
@@ -326,7 +337,7 @@ class SignalBot:
             
             # Calculate stop loss
             stop_loss = StopTPCalculator.calculate_stop_loss(
-                data, direction, current_price
+                data, direction, current_price, symbol
             )
             
             # Get ATR for adaptive stop monitoring
@@ -357,8 +368,10 @@ class SignalBot:
             if btc_position_mult < 1.0:
                 original_contracts = position_size['contracts']
                 position_size['contracts'] = max(1, int(position_size['contracts'] * btc_position_mult))
-                position_size['total_value'] = position_size['contracts'] * current_price
-                logger.info(f"{symbol}: BTC regime adjusted position: {original_contracts} → {position_size['contracts']} contracts ({btc_position_mult:.1%} multiplier)")
+                # Update notional_usd and margin_used to match adjusted contracts
+                position_size['notional_usd'] = position_size['contracts'] * current_price
+                position_size['margin_used'] = position_size['notional_usd'] / position_size['leverage']
+                logger.info(f"{symbol}: BTC regime adjusted position: {original_contracts} → {position_size['contracts']} contracts ({btc_position_mult:.1%} multiplier) | Notional: ${position_size['notional_usd']:.2f} | Margin: ${position_size['margin_used']:.2f}")
             
             # Validate position size
             market_info = self.data_manager.client.get_market_info(symbol)
@@ -473,7 +486,7 @@ class SignalBot:
                         symbol=symbol,
                         direction=signal['direction'],
                         tp_level=hit_info['level'],
-                        price=current_price,
+                        price=hit_info['price'],  # Use actual TP price
                         pnl=hit_info['pnl'],
                         total_pnl=hit_info['total_pnl'],
                         remaining_percent=hit_info['remaining_percent'],
@@ -498,7 +511,7 @@ class SignalBot:
                         symbol=symbol,
                         direction=signal['direction'],
                         entry_price=signal['entry_price'],
-                        exit_price=current_price,
+                        exit_price=hit_info['price'],  # Use actual TP price
                         pnl=hit_info['pnl'],  # Log the partial PnL
                         exit_reason=exit_reason,
                         regime=signal.get('regime', 'unknown'),
@@ -511,7 +524,7 @@ class SignalBot:
                     self.discord.send_stop_hit(
                         symbol=symbol,
                         direction=signal['direction'],
-                        price=current_price,
+                        price=hit_info['price'],  # Use actual SL price
                         total_pnl=hit_info['remaining_pnl'],  # P&L from remaining position only
                         contracts_closed=hit_info.get('contracts_closed'),
                         remaining_percent=signal.get('remaining_percent', 100)
@@ -527,7 +540,7 @@ class SignalBot:
                         symbol=symbol,
                         direction=signal['direction'],
                         entry_price=signal['entry_price'],
-                        exit_price=current_price,
+                        exit_price=hit_info['price'],  # Use actual SL price
                         pnl=hit_info['remaining_pnl'],  # Only record P&L from remaining position (partial TPs already recorded)
                         exit_reason='stopped',
                         regime=signal.get('regime', 'unknown'),

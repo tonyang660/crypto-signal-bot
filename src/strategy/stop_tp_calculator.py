@@ -27,7 +27,8 @@ class StopTPCalculator:
     def calculate_stop_loss(
         data: Dict[str, pd.DataFrame],
         direction: str,
-        entry_price: float
+        entry_price: float,
+        symbol: str = ''
     ) -> float:
         """
         Calculate stop loss level
@@ -42,6 +43,7 @@ class StopTPCalculator:
             data: Multi-timeframe data dict
             direction: 'long' or 'short'
             entry_price: Entry price level
+            symbol: Trading symbol (for BTC-specific rules)
         
         Returns:
             Stop loss price
@@ -51,9 +53,15 @@ class StopTPCalculator:
             
             atr = primary_df['atr'].iloc[-1]
             
+            # BTC-specific tighter stops
+            if symbol == 'BTCUSDT':
+                atr_multiplier = Config.BTC_ATR_MULTIPLIER
+            else:
+                atr_multiplier = Config.ATR_STOP_MULTIPLIER
+            
             if direction == 'long':
                 # ATR-based stop
-                stop_atr = entry_price - (Config.ATR_STOP_MULTIPLIER * atr)
+                stop_atr = entry_price - (atr_multiplier * atr)
                 
                 # Swing low stop
                 swing_low = MarketStructure.find_swing_low(primary_df, lookback=20)
@@ -72,7 +80,7 @@ class StopTPCalculator:
             
             else:  # short
                 # ATR-based stop
-                stop_atr = entry_price + (Config.ATR_STOP_MULTIPLIER * atr)
+                stop_atr = entry_price + (atr_multiplier * atr)
                 
                 # Swing high stop
                 swing_high = MarketStructure.find_swing_high(primary_df, lookback=20)

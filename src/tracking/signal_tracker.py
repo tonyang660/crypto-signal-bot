@@ -362,7 +362,8 @@ class SignalTracker:
         
         # Calculate PnL for this portion
         entry_price = signal['entry_price']
-        current_price = signal['current_price']
+        # Use actual TP price instead of current market price (simulates preset order execution)
+        exit_price = signal['take_profits'][tp_level]['price']
         direction = signal['direction']
         contracts = signal['position_size']['contracts']
         contracts_remaining = signal.get('contracts_remaining', contracts)  # Backward compatibility
@@ -374,9 +375,9 @@ class SignalTracker:
             portion_contracts = 0
         
         if direction == 'long':
-            pnl = (current_price - entry_price) * portion_contracts
+            pnl = (exit_price - entry_price) * portion_contracts
         else:
-            pnl = (entry_price - current_price) * portion_contracts
+            pnl = (entry_price - exit_price) * portion_contracts
         
         # Update signal
         signal['realized_pnl'] += pnl
@@ -397,7 +398,7 @@ class SignalTracker:
         hit_info = {
             'type': 'tp_hit',
             'level': tp_level,
-            'price': current_price,
+            'price': exit_price,  # Use TP price (preset order execution)
             'close_percent': close_percent,
             'contracts_closed': portion_contracts,
             'pnl': pnl,
@@ -408,7 +409,7 @@ class SignalTracker:
             'signal': signal.copy()  # Include signal data
         }
         
-        logger.info(f"🎯 {tp_level.upper()} hit for {symbol} | Closed {portion_contracts:.4f} {base_asset} ({close_percent:.1f}%) | PnL: ${pnl:+.2f} | Remaining: {signal['contracts_remaining']:.4f} {base_asset} ({signal['remaining_percent']:.1f}%)")
+        logger.info(f"🎯 {tp_level.upper()} hit for {symbol} at ${exit_price:.4f} | Closed {portion_contracts:.4f} {base_asset} ({close_percent:.1f}%) | PnL: ${pnl:+.2f} | Remaining: {signal['contracts_remaining']:.4f} {base_asset} ({signal['remaining_percent']:.1f}%)")
         
         # If all position closed or remaining too small, move to history
         if signal['remaining_percent'] <= 0:
