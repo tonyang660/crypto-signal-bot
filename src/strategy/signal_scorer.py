@@ -39,6 +39,123 @@ class SignalScorer:
             return 0.0
     
     @staticmethod
+    def detect_fast_rally(
+        primary_df: pd.DataFrame,
+        direction: str
+    ) -> dict:
+        """
+        Detect fast rally/correction using multiple velocity windows
+        Catches explosive moves that happen in 1-3 hours, not just 4-hour average
+        
+        Args:
+            primary_df: 15M timeframe data
+            direction: 'long' or 'short'
+        
+        Returns:
+            Dict with 'detected' (bool), 'velocity_short' (float), 'velocity_medium' (float),
+            'velocity_long' (float), 'is_accelerating' (bool), 'strength' (str)
+        """
+        try:
+            # Calculate velocity over multiple windows (on 15M timeframe)
+            velocity_short = SignalScorer.detect_price_velocity(primary_df, lookback_bars=6)   # 1.5 hours
+            velocity_medium = SignalScorer.detect_price_velocity(primary_df, lookback_bars=12)  # 3 hours
+            velocity_long = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)    # 4 hours
+            
+            # Debug logging for velocity calculation
+            if len(primary_df) >= 17:
+                price_now = primary_df['close'].iloc[-1]
+                price_6bars = primary_df['close'].iloc[-7] if len(primary_df) >= 7 else 0
+                price_12bars = primary_df['close'].iloc[-13] if len(primary_df) >= 13 else 0
+                price_16bars = primary_df['close'].iloc[-17] if len(primary_df) >= 17 else 0
+                logger.debug(f"Velocity calc: Now=${price_now:.4f}, 6bars=${price_6bars:.4f}, 12bars=${price_12bars:.4f}, 16bars=${price_16bars:.4f}")
+                logger.debug(f"Velocities: 1.5h={velocity_short*100:+.2f}%, 3h={velocity_medium*100:+.2f}%, 4h={velocity_long*100:+.2f}%")
+            
+            # Check if velocity is accelerating (recent > medium > long term)
+            if direction == 'long':
+                is_accelerating = (abs(velocity_short) > abs(velocity_medium) > abs(velocity_long) 
+                                 and velocity_short > 0)
+                # Detect fast rally
+                if velocity_short > 0.05:  # >5% in 1.5 hours
+                    return {
+                        'detected': True,
+                        'velocity_short': velocity_short,
+                        'velocity_medium': velocity_medium,
+                        'velocity_long': velocity_long,
+                        'is_accelerating': is_accelerating,
+                        'strength': 'explosive'  # >5% in 1.5h
+                    }
+                elif velocity_short > 0.03 or velocity_medium > 0.045:  # >3% in 1.5h OR >4.5% in 3h
+                    return {
+                        'detected': True,
+                        'velocity_short': velocity_short,
+                        'velocity_medium': velocity_medium,
+                        'velocity_long': velocity_long,
+                        'is_accelerating': is_accelerating,
+                        'strength': 'strong'
+                    }
+                elif velocity_medium > 0.03 and velocity_short > 0.02:  # 3% in 3h + still moving
+                    return {
+                        'detected': True,
+                        'velocity_short': velocity_short,
+                        'velocity_medium': velocity_medium,
+                        'velocity_long': velocity_long,
+                        'is_accelerating': is_accelerating,
+                        'strength': 'moderate'
+                    }
+            else:  # short direction
+                is_accelerating = (abs(velocity_short) > abs(velocity_medium) > abs(velocity_long) 
+                                 and velocity_short < 0)
+                # Detect fast correction
+                if velocity_short < -0.05:  # <-5% in 1.5 hours
+                    return {
+                        'detected': True,
+                        'velocity_short': velocity_short,
+                        'velocity_medium': velocity_medium,
+                        'velocity_long': velocity_long,
+                        'is_accelerating': is_accelerating,
+                        'strength': 'explosive'
+                    }
+                elif velocity_short < -0.03 or velocity_medium < -0.045:
+                    return {
+                        'detected': True,
+                        'velocity_short': velocity_short,
+                        'velocity_medium': velocity_medium,
+                        'velocity_long': velocity_long,
+                        'is_accelerating': is_accelerating,
+                        'strength': 'strong'
+                    }
+                elif velocity_medium < -0.03 and velocity_short < -0.02:
+                    return {
+                        'detected': True,
+                        'velocity_short': velocity_short,
+                        'velocity_medium': velocity_medium,
+                        'velocity_long': velocity_long,
+                        'is_accelerating': is_accelerating,
+                        'strength': 'moderate'
+                    }
+            
+            # No fast rally detected
+            return {
+                'detected': False,
+                'velocity_short': velocity_short,
+                'velocity_medium': velocity_medium,
+                'velocity_long': velocity_long,
+                'is_accelerating': is_accelerating,
+                'strength': 'none'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error detecting fast rally: {e}")
+            return {
+                'detected': False,
+                'velocity_short': 0.0,
+                'velocity_medium': 0.0,
+                'velocity_long': 0.0,
+                'is_accelerating': False,
+                'strength': 'none'
+            }
+    
+    @staticmethod
     def detect_strong_primary_trend(
         primary_df: pd.DataFrame,
         direction: str
@@ -381,23 +498,28 @@ class SignalScorer:
                         score += 12
                         
                 elif htf_trend == 'neutral':
-                    # FAST RALLY DETECTION: Check for explosive momentum on PRIMARY
-                    velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                    # NEW FAST RALLY DETECTION: Multi-window velocity analysis
+                    rally_data = SignalScorer.detect_fast_rally(primary_df, direction)
                     is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, direction)
                     
-                    if velocity > 0.03 and is_strong_primary:
-                        # Fast rally detected - award partial credit
-                        if velocity > 0.05:
-                            breakdown['htf_alignment']['points'] = 20
-                            breakdown['htf_alignment']['details'] = f'FAST RALLY: +{velocity*100:.1f}% in 4h, {primary_reason}'
-                            score += 20
-                        else:
+                    if rally_data['detected'] and is_strong_primary:
+                        # Fast rally detected - award points based on strength
+                        if rally_data['strength'] == 'explosive':  # >5% in 1.5h
+                            breakdown['htf_alignment']['points'] = 25
+                            breakdown['htf_alignment']['details'] = f"EXPLOSIVE RALLY: +{rally_data['velocity_short']*100:.1f}% in 1.5h {'(accelerating)' if rally_data['is_accelerating'] else ''}"
+                            score += 25
+                        elif rally_data['strength'] == 'strong':  # >3% in 1.5h or >4.5% in 3h
+                            breakdown['htf_alignment']['points'] = 22
+                            breakdown['htf_alignment']['details'] = f"STRONG RALLY: +{rally_data['velocity_short']*100:.1f}% (1.5h), +{rally_data['velocity_medium']*100:.1f}% (3h)"
+                            score += 22
+                        else:  # moderate
                             breakdown['htf_alignment']['points'] = 18
-                            breakdown['htf_alignment']['details'] = f'FAST RALLY: +{velocity*100:.1f}% in 4h, {primary_reason}'
+                            breakdown['htf_alignment']['details'] = f"FAST RALLY: +{rally_data['velocity_medium']*100:.1f}% in 3h, {primary_reason}"
                             score += 18
                     else:
+                        # No fast rally - low score for neutral HTF
                         breakdown['htf_alignment']['points'] = 8
-                        breakdown['htf_alignment']['details'] = f'HTF neutral, weak alignment (velocity: {velocity*100:+.1f}%)'
+                        breakdown['htf_alignment']['details'] = f"HTF neutral, weak alignment (1.5h: {rally_data['velocity_short']*100:+.1f}%, 3h: {rally_data['velocity_medium']*100:+.1f}%)"
                         score += 8
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
@@ -428,23 +550,28 @@ class SignalScorer:
                         score += 12
                         
                 elif htf_trend == 'neutral':
-                    # FAST CORRECTION DETECTION: Check for explosive downward momentum on PRIMARY
-                    velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                    # NEW FAST CORRECTION DETECTION: Multi-window velocity analysis
+                    rally_data = SignalScorer.detect_fast_rally(primary_df, direction)
                     is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, direction)
                     
-                    if velocity < -0.03 and is_strong_primary:
-                        # Fast correction detected - award partial credit
-                        if velocity < -0.05:
-                            breakdown['htf_alignment']['points'] = 20
-                            breakdown['htf_alignment']['details'] = f'FAST CORRECTION: {velocity*100:.1f}% in 4h, {primary_reason}'
-                            score += 20
-                        else:
+                    if rally_data['detected'] and is_strong_primary:
+                        # Fast correction detected - award points based on strength
+                        if rally_data['strength'] == 'explosive':  # <-5% in 1.5h
+                            breakdown['htf_alignment']['points'] = 25
+                            breakdown['htf_alignment']['details'] = f"EXPLOSIVE CORRECTION: {rally_data['velocity_short']*100:.1f}% in 1.5h {'(accelerating)' if rally_data['is_accelerating'] else ''}"
+                            score += 25
+                        elif rally_data['strength'] == 'strong':  # <-3% in 1.5h or <-4.5% in 3h
+                            breakdown['htf_alignment']['points'] = 22
+                            breakdown['htf_alignment']['details'] = f"STRONG CORRECTION: {rally_data['velocity_short']*100:.1f}% (1.5h), {rally_data['velocity_medium']*100:.1f}% (3h)"
+                            score += 22
+                        else:  # moderate
                             breakdown['htf_alignment']['points'] = 18
-                            breakdown['htf_alignment']['details'] = f'FAST CORRECTION: {velocity*100:.1f}% in 4h, {primary_reason}'
+                            breakdown['htf_alignment']['details'] = f"FAST CORRECTION: {rally_data['velocity_medium']*100:.1f}% in 3h, {primary_reason}"
                             score += 18
                     else:
+                        # No fast correction - low score for neutral HTF
                         breakdown['htf_alignment']['points'] = 8
-                        breakdown['htf_alignment']['details'] = f'HTF neutral, weak alignment (velocity: {velocity*100:+.1f}%)'
+                        breakdown['htf_alignment']['details'] = f"HTF neutral, weak alignment (1.5h: {rally_data['velocity_short']*100:+.1f}%, 3h: {rally_data['velocity_medium']*100:+.1f}%)"
                         score += 8
                 else:
                     breakdown['htf_alignment']['details'] = f'HTF is {htf_trend}, opposing direction'
@@ -485,12 +612,32 @@ class SignalScorer:
             # === 3. RSI Quality (0-12 points) ===
             rsi = primary_df['rsi'].iloc[-1]
             
-            # Get HTF trend for context-aware RSI scoring
+            # Get HTF trend and check for fast rally
             htf_trend_for_rsi = MarketStructure.get_trend_direction(htf_df)
+            rally_data = SignalScorer.detect_fast_rally(primary_df, direction)
+            is_fast_rally = rally_data['detected']
             
             if direction == 'long':
+                # During fast rallies, allow MUCH higher RSI (momentum trades)
+                if is_fast_rally and rally_data['strength'] in ['explosive', 'strong']:
+                    if 50 <= rsi <= 75:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Strong momentum RSI during fast rally ({rsi:.1f})'
+                        score += 12
+                    elif 45 <= rsi < 50 or 75 < rsi <= 82:
+                        breakdown['rsi_quality']['points'] = 10
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI in explosive move ({rsi:.1f})'
+                        score += 10
+                    elif 40 <= rsi < 45 or 82 < rsi <= 88:
+                        breakdown['rsi_quality']['points'] = 6
+                        breakdown['rsi_quality']['details'] = f'High RSI but fast rally continues ({rsi:.1f})'
+                        score += 6
+                    else:
+                        breakdown['rsi_quality']['points'] = 2
+                        breakdown['rsi_quality']['details'] = f'Extreme RSI even for fast rally ({rsi:.1f})'
+                        score += 2
                 # During strong bullish trends, higher RSI is normal and acceptable
-                if htf_trend_for_rsi == 'bullish':
+                elif htf_trend_for_rsi == 'bullish':
                     # In bullish trends, embrace momentum - higher RSI is okay
                     if 40 <= rsi <= 65:
                         breakdown['rsi_quality']['points'] = 12
@@ -524,8 +671,26 @@ class SignalScorer:
                         breakdown['rsi_quality']['details'] = f'Poor RSI for long ({rsi:.1f})'
             
             elif direction == 'short':
+                # During fast corrections, allow MUCH lower RSI (momentum trades)
+                if is_fast_rally and rally_data['strength'] in ['explosive', 'strong']:
+                    if 25 <= rsi <= 50:
+                        breakdown['rsi_quality']['points'] = 12
+                        breakdown['rsi_quality']['details'] = f'Strong momentum RSI during fast correction ({rsi:.1f})'
+                        score += 12
+                    elif 18 <= rsi < 25 or 50 < rsi <= 55:
+                        breakdown['rsi_quality']['points'] = 10
+                        breakdown['rsi_quality']['details'] = f'Acceptable RSI in explosive move ({rsi:.1f})'
+                        score += 10
+                    elif 12 <= rsi < 18 or 55 < rsi <= 60:
+                        breakdown['rsi_quality']['points'] = 6
+                        breakdown['rsi_quality']['details'] = f'Low RSI but fast correction continues ({rsi:.1f})'
+                        score += 6
+                    else:
+                        breakdown['rsi_quality']['points'] = 2
+                        breakdown['rsi_quality']['details'] = f'Extreme RSI even for fast correction ({rsi:.1f})'
+                        score += 2
                 # During strong bearish trends, lower RSI is normal and acceptable
-                if htf_trend_for_rsi == 'bearish':
+                elif htf_trend_for_rsi == 'bearish':
                     # In bearish trends, embrace downward momentum - lower RSI is okay
                     if 35 <= rsi <= 60:
                         breakdown['rsi_quality']['points'] = 12

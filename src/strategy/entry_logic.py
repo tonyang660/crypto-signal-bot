@@ -36,15 +36,15 @@ class EntryLogic:
                 # Import here to avoid circular dependency
                 from src.strategy.signal_scorer import SignalScorer
                 
-                velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                rally_data = SignalScorer.detect_fast_rally(primary_df, 'long')
                 is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, 'long')
                 
-                # Require >3% move in 4 hours AND strong PRIMARY trend
-                if not (velocity > 0.03 and is_strong_primary):
-                    return {'valid': False, 'reason': f'HTF neutral without fast rally confirmation (velocity: {velocity*100:+.1f}%)'}
+                # Require fast rally detection (multi-window velocity check) AND strong PRIMARY trend
+                if not (rally_data['detected'] and is_strong_primary):
+                    return {'valid': False, 'reason': f"HTF neutral without fast rally confirmation (1.5h: {rally_data['velocity_short']*100:+.1f}%, 3h: {rally_data['velocity_medium']*100:+.1f}%)"}
                 
                 # Fast rally detected - proceed with entry checks
-                logger.info(f"Fast rally override: HTF neutral but velocity {velocity*100:+.1f}% in 4h, {primary_reason}")
+                logger.info(f"Fast rally override: HTF neutral but {rally_data['strength']} rally detected: 1.5h: {rally_data['velocity_short']*100:+.1f}%, 3h: {rally_data['velocity_medium']*100:+.1f}%, {primary_reason}")
             
             # If HTF is bullish or neutral with fast rally, continue...
             
@@ -133,15 +133,15 @@ class EntryLogic:
                 # Allow neutral HTF IF we detect fast correction (explosive downward PRIMARY momentum)
                 from src.strategy.signal_scorer import SignalScorer
                 
-                velocity = SignalScorer.detect_price_velocity(primary_df, lookback_bars=16)
+                rally_data = SignalScorer.detect_fast_rally(primary_df, 'short')
                 is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, 'short')
                 
-                # Require <-3% move in 4 hours AND strong PRIMARY trend
-                if not (velocity < -0.03 and is_strong_primary):
-                    return {'valid': False, 'reason': f'HTF neutral without fast correction confirmation (velocity: {velocity*100:+.1f}%)'}
+                # Require fast correction detection (multi-window velocity check) AND strong PRIMARY trend
+                if not (rally_data['detected'] and is_strong_primary):
+                    return {'valid': False, 'reason': f"HTF neutral without fast correction confirmation (1.5h: {rally_data['velocity_short']*100:+.1f}%, 3h: {rally_data['velocity_medium']*100:+.1f}%)"}
                 
                 # Fast correction detected - proceed with entry checks
-                logger.info(f"Fast correction override: HTF neutral but velocity {velocity*100:+.1f}% in 4h, {primary_reason}")
+                logger.info(f"Fast correction override: HTF neutral but {rally_data['strength']} correction detected: 1.5h: {rally_data['velocity_short']*100:+.1f}%, 3h: {rally_data['velocity_medium']*100:+.1f}%, {primary_reason}")
             
             # If HTF is bearish or neutral with fast correction, continue...
             
