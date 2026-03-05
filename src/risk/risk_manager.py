@@ -78,14 +78,15 @@ class RiskManager:
                 remaining = (self.weekly_cooldown_until - datetime.now()).total_seconds() / 3600
                 return False, f"⏸️ Weekly limit cooldown active for {remaining:.1f} more hours (Weekly PnL: ${self.weekly_pnl:.2f}) | Threshold +{self.weekly_threshold_penalty}"
             else:
-                # Cooldown expired - clear it and penalty
-                logger.info("✅ Weekly cooldown period ended - Clearing threshold penalty")
+                # Cooldown expired - clear cooldown but KEEP threshold penalty for rest of week
+                logger.info("✅ Weekly cooldown period ended - Trading allowed with +5 threshold penalty until Monday")
                 self.weekly_cooldown_until = None
-                self.weekly_threshold_penalty = 0
+                # DO NOT reset weekly_threshold_penalty - it stays at +5 until Monday
                 self._save_state()
         
         # Check weekly loss limit based on NET weekly PNL (total wins + losses)
-        if self.weekly_pnl < 0:
+        # Only trigger cooldown if not already triggered this week
+        if self.weekly_pnl < 0 and self.weekly_threshold_penalty == 0:
             weekly_loss_pct = abs(self.weekly_pnl / self.equity)
             if weekly_loss_pct >= max_weekly_loss:
                 # Activate 12-hour cooldown instead of disabling for entire week
