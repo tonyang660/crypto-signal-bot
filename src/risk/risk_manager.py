@@ -40,7 +40,7 @@ class RiskManager:
     def can_trade(self) -> Tuple[bool, str]:
         """
         Check if trading is allowed
-        
+
         Returns:
             (allowed: bool, reason: str)
         """
@@ -257,6 +257,11 @@ class RiskManager:
                 if abs(self.weekly_loss / self.equity) < Config.MAX_WEEKLY_LOSS:
                     self.trading_enabled = True
                     self.cooldown_until = None
+
+                # New day should not keep stale consecutive loss lockout
+                if self.consecutive_losses > 0:
+                    logger.info(f"✅ New day - Resetting consecutive losses ({self.consecutive_losses} -> 0)")
+                    self.consecutive_losses = 0
                 
                 self._save_state()
             return True
@@ -305,6 +310,9 @@ class RiskManager:
             self.trading_enabled = True
             self.cooldown_until = None
             self.weekly_cooldown_until = None  # Clear weekly cooldown on new week
+            if self.consecutive_losses > 0:
+                logger.info(f"✅ New week - Resetting consecutive losses ({self.consecutive_losses} -> 0)")
+                self.consecutive_losses = 0
             
             # Clear weekly threshold penalty on new week
             if self.weekly_threshold_penalty > 0:
