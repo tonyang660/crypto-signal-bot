@@ -242,9 +242,9 @@ class SignalBot:
 
     def _evaluate_and_create_signal(self, symbol, direction, data, check_result, btc_position_mult, regime):
         """Helper to evaluate entry conditions and create a signal."""
+        score, breakdown = SignalScorer.calculate_score_with_breakdown(data, direction, symbol, regime)
+        
         if check_result['valid']:
-            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, direction, symbol, regime)
-            
             # Apply threshold checks
             account_state = self.risk_manager.get_account_state()
             base_threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
@@ -255,7 +255,7 @@ class SignalBot:
             else:
                 logger.info(f"{symbol}: ❌ {direction.upper()} entry failed score check | Score: {score}/100 (Threshold: {base_threshold})")
         else:
-            logger.debug(f"{symbol}: ❌ {direction.upper()} entry conditions not met | Reason: {check_result['reason']}")
+            logger.info(f"{symbol}: ❌ {direction.upper()} entry conditions not met | Reason: {check_result['reason']}")
 
     def _create_signal_with_score(
         self,
