@@ -252,53 +252,44 @@ class SignalScorer:
         return True, "Accelerating MACD with aligned primary trend"
 
     @staticmethod
-    def _score_fast_rally(primary_df: pd.DataFrame, direction: str) -> tuple:
-        """Scores a fast rally/correction for HTF neutral override."""
-        velocity_short = SignalScorer.detect_price_velocity(primary_df, 6) # 1.5h
+    def detect_fast_rally(primary_df: pd.DataFrame, direction: str) -> dict:
+        """
+        Detects a fast rally or correction, returning a dictionary with detection status and details.
+        This is a helper for trend-following logic in neutral HTF conditions.
+        """
+        velocity_short = SignalScorer.detect_price_velocity(primary_df, 6)  # 1.5h
         velocity_medium = SignalScorer.detect_price_velocity(primary_df, 12) # 3h
-        is_strong_primary, _ = SignalScorer.detect_strong_primary_trend(primary_df, direction)
+        is_strong_primary, primary_reason = SignalScorer.detect_strong_primary_trend(primary_df, direction)
 
-        if not is_strong_primary:
-            return 8, f"HTF neutral, weak primary trend (1.5h: {velocity_short*100:+.1f}%)"
+        detected = False
+        strength = "none"
 
-        if direction == 'long':
-            if velocity_short > 0.05:
-                return 25, f"Explosive rally: {velocity_short*100:+.1f}% in 1.5h"
-            if velocity_short > 0.03 or velocity_medium > 0.045:
-                return 22, f"Strong rally: {velocity_short*100:+.1f}% (1.5h), {velocity_medium*100:+.1f}% (3h)"
-        else: # short
-            if velocity_short < -0.05:
-                return 25, f"Explosive correction: {velocity_short*100:.1f}% in 1.5h"
-            if velocity_short < -0.03 or velocity_medium < -0.045:
-                return 22, f"Strong correction: {velocity_short*100:.1f}% (1.5h), {velocity_medium*100:.1f}% (3h)"
+        if is_strong_primary:
+            if direction == 'long':
+                if velocity_short > 0.05:
+                    detected = True
+                    strength = "explosive"
+                elif velocity_short > 0.03 or velocity_medium > 0.045:
+                    detected = True
+                    strength = "strong"
+                elif velocity_short > 0.015:
+                    detected = True
+                    strength = "moderate"
+            else:  # short
+                if velocity_short < -0.05:
+                    detected = True
+                    strength = "explosive"
+                elif velocity_short < -0.03 or velocity_medium < -0.045:
+                    detected = True
+                    strength = "strong"
+                elif velocity_short < -0.015:
+                    detected = True
+                    strength = "moderate"
         
-        return 15, f"Moderate rally/correction with strong primary trend"
-    
-    # Keep detect_price_velocity and detect_strong_primary_trend as they are helpers
-    @staticmethod
-    def detect_price_velocity(df: pd.DataFrame, lookback_bars: int = 16) -> float:
-        """Calculates price velocity over a lookback period."""
-        if len(df) < lookback_bars + 1: return 0.0
-        price_current = df['close'].iloc[-1]
-        price_past = df['close'].iloc[-lookback_bars]
-        return (price_current - price_past) / price_past if price_past != 0 else 0.0
-
-    @staticmethod
-    def detect_strong_primary_trend(primary_df: pd.DataFrame, direction: str) -> tuple:
-        """Detects if the primary (15M) timeframe shows strong trending characteristics."""
-        primary_trend = MarketStructure.get_trend_direction(primary_df)
-        if (direction == 'long' and primary_trend != 'bullish') or \
-           (direction == 'short' and primary_trend != 'bearish'):
-            return False, f"Primary trend ({primary_trend}) opposes direction"
-
-        macd_hist = primary_df['macd_hist'].tail(3).values
-        if len(macd_hist) < 3: return False, "Insufficient MACD data"
-
-        if direction == 'long':
-            if not (macd_hist[-1] > macd_hist[-2] > macd_hist[-3] and macd_hist[-1] > 0):
-                return False, "MACD not accelerating upward"
-        else:
-            if not (macd_hist[-1] < macd_hist[-2] < macd_hist[-3] and macd_hist[-1] < 0):
-                return False, "MACD not accelerating downward"
-        
-        return True, "Accelerating MACD with aligned primary trend"
+        return {
+            'detected': detected,
+            'strength': strength,
+            'velocity_short': velocity_short,
+            'velocity_medium': velocity_medium,
+            'primary_reason': primary_reason
+        }

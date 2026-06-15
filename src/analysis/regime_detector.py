@@ -73,6 +73,7 @@ class RegimeDetector:
         """
         Check Bitcoin regime to gauge overall market conditions.
         This acts as a macro filter for risk management.
+        Returns a dictionary with the regime and corresponding risk adjustments.
         """
         try:
             from .market_structure import MarketStructure
@@ -80,40 +81,80 @@ class RegimeDetector:
             btc_trend = MarketStructure.get_trend_direction(btc_data)
             btc_rsi = btc_data['rsi'].iloc[-1]
             
+            # Default adjustments
+            adjustments = {
+                'score_threshold_adj': 0,
+                'position_size_mult': 1.0,
+                'max_signals_adj': 0
+            }
+
             # Favorable for longs
             if btc_trend == 'bullish' and 30 < btc_rsi < 70:
+                adjustments.update({
+                    'score_threshold_adj': -5,  # Be slightly less strict
+                    'position_size_mult': 1.1,  # Allow slightly larger size
+                    'max_signals_adj': 1        # Allow one extra signal
+                })
                 return {
                     'regime': 'favorable_long',
-                    'reason': f'BTC is bullish (RSI: {btc_rsi:.1f})'
+                    'reason': f'BTC is bullish (RSI: {btc_rsi:.1f})',
+                    **adjustments
                 }
             # Favorable for shorts
             elif btc_trend == 'bearish' and 30 < btc_rsi < 70:
+                adjustments.update({
+                    'score_threshold_adj': -5,
+                    'position_size_mult': 1.1,
+                    'max_signals_adj': 1
+                })
                 return {
                     'regime': 'favorable_short',
-                    'reason': f'BTC is bearish (RSI: {btc_rsi:.1f})'
+                    'reason': f'BTC is bearish (RSI: {btc_rsi:.1f})',
+                    **adjustments
                 }
             # Extended / Overbought
             elif btc_rsi > 75:
+                adjustments.update({
+                    'score_threshold_adj': 10,  # Be much stricter on new longs
+                    'position_size_mult': 0.7,  # Reduce size for new trades
+                    'max_signals_adj': -1       # Reduce max signals
+                })
                 return {
                     'regime': 'extended',
-                    'reason': f'BTC is overbought (RSI: {btc_rsi:.1f}), caution on new longs'
+                    'reason': f'BTC is overbought (RSI: {btc_rsi:.1f}), caution on new longs',
+                    **adjustments
                 }
             # Extended / Oversold
             elif btc_rsi < 25:
+                adjustments.update({
+                    'score_threshold_adj': 10,  # Be much stricter on new shorts
+                    'position_size_mult': 0.7,
+                    'max_signals_adj': -1
+                })
                 return {
                     'regime': 'extended',
-                    'reason': f'BTC is oversold (RSI: {btc_rsi:.1f}), caution on new shorts'
+                    'reason': f'BTC is oversold (RSI: {btc_rsi:.1f}), caution on new shorts',
+                    **adjustments
                 }
             # Neutral / Choppy
             else:
+                adjustments.update({
+                    'score_threshold_adj': 5,   # Be more selective
+                    'position_size_mult': 0.9,  # Slightly reduce size
+                    'max_signals_adj': 0
+                })
                 return {
                     'regime': 'neutral',
-                    'reason': f'BTC is in a neutral state (RSI: {btc_rsi:.1f})'
+                    'reason': f'BTC is in a neutral state (RSI: {btc_rsi:.1f})',
+                    **adjustments
                 }
         
         except Exception as e:
             logger.error(f"Error checking BTC regime: {e}")
             return {
                 'regime': 'neutral',
-                'reason': 'Error checking BTC regime, defaulting to neutral'
+                'reason': 'Error checking BTC regime, defaulting to neutral',
+                'score_threshold_adj': 5,
+                'position_size_mult': 0.9,
+                'max_signals_adj': 0
             }
