@@ -213,99 +213,50 @@ class SignalBot:
             # Add indicators to all timeframes
             for timeframe in data:
                 data[timeframe] = Indicators.add_all_indicators(data[timeframe])
+
+            # === PHASE 2: REGIME-ADAPTIVE ENTRY LOGIC ===
             
-            # Check market regime (individual symbol)
+            # Detect regime and select strategy
             regime = RegimeDetector.detect_regime(data['primary'])
+            strategy_type = RegimeDetector.get_regime_strategy(regime)
+            logger.info(f"{symbol}: Regime: {regime} -> Strategy: {strategy_type}")
+
+            # Check for long/short entries based on the selected strategy
+            if strategy_type == 'Trend-Following':
+                long_check = EntryLogic.check_trend_following_long(data)
+                short_check = EntryLogic.check_trend_following_short(data)
+            elif strategy_type == 'Mean-Reversion':
+                long_check = EntryLogic.check_mean_reversion_long(data)
+                short_check = EntryLogic.check_mean_reversion_short(data)
+            else:
+                logger.warning(f"Unknown strategy type for regime {regime}")
+                return
+
+            # Score and create signal if conditions are met
+            self._evaluate_and_create_signal(symbol, 'long', data, long_check, btc_position_mult, regime)
+            self._evaluate_and_create_signal(symbol, 'short', data, short_check, btc_position_mult, regime)
+
+        except Exception as e:
+            logger.error(f"Error in scan_symbol: {e}")
+            self.discord.send_error(f"Scan error: {str(e)}")
+
+    def _evaluate_and_create_signal(self, symbol, direction, data, check_result, btc_position_mult, regime):
+        """Helper to evaluate entry conditions and create a signal."""
+        if check_result['valid']:
+            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, direction, symbol, regime)
             
-            # BTC-specific regime filter
-            if symbol == 'BTCUSDT' and Config.BTC_SKIP_CHOPPY_REGIMES:
-                if regime in ['choppy', 'ranging', 'low_volatility']:
-                    logger.info(f"{symbol}: ❌ BTC in choppy regime ({regime}) - skipped for quality")
-                    return
-            
-            # Get base score threshold
+            # Apply threshold checks
             account_state = self.risk_manager.get_account_state()
             base_threshold = Config.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else Config.SIGNAL_THRESHOLD_NORMAL
             
-            # BTC-specific higher threshold
-            if symbol == 'BTCUSDT':
-                base_threshold = max(base_threshold, Config.BTC_SCORE_THRESHOLD)
-                logger.debug(f"{symbol}: Using BTC-specific threshold: {Config.BTC_SCORE_THRESHOLD}")
-            
-            # Apply BTC regime adjustment to threshold
-            threshold = base_threshold + btc_threshold_adj
-            
-            # Apply cooldown penalty adjustment to threshold
-            cooldown_penalty = self.risk_manager.get_threshold_adjustment()
-            if cooldown_penalty > 0:
-                threshold += cooldown_penalty
-                logger.warning(f"{symbol}: Cooldown penalty active +{cooldown_penalty}pt | Adjusted threshold: {threshold}")
-            
-            if not RegimeDetector.should_trade_regime(regime):
-                logger.info(f"{symbol}: ❌ Unfavorable regime ({regime}) | Threshold: {threshold} (base: {base_threshold} + BTC adj: {btc_threshold_adj})")
-                return
-            
-            # Check for extreme volatility (likely news event)
-            is_extreme, vol_reason = self.risk_manager.check_extreme_volatility(symbol, data)
-            if is_extreme:
-                logger.warning(f"{symbol}: {vol_reason}")
-                
-                # Alert Discord only once per hour to avoid spam
-                now = datetime.now()
-                if (self.risk_manager.last_volatility_alert is None or 
-                    (now - self.risk_manager.last_volatility_alert).total_seconds() > 3600):
-                    self.discord.send_error(vol_reason)
-                    self.risk_manager.last_volatility_alert = now
-                
-                return  # Skip this symbol
+            if score >= base_threshold:
+                logger.success(f"{symbol}: ✅ {direction.upper()} entry valid | Score: {score}/100 | Reason: {check_result['reason']}")
+                self._create_signal_with_score(symbol, direction, data, check_result['reason'], score, breakdown, btc_position_mult)
+            else:
+                logger.info(f"{symbol}: ❌ {direction.upper()} entry failed score check | Score: {score}/100 (Threshold: {base_threshold})")
+        else:
+            logger.debug(f"{symbol}: ❌ {direction.upper()} entry conditions not met | Reason: {check_result['reason']}")
 
-            logger.info(f"{symbol}: ✓ Regime check passed ({regime}) | Min threshold: {threshold}")
-            
-            # Check for long entry
-            long_check = EntryLogic.check_long_entry(data)
-            
-            # Calculate score first
-            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
-            
-            # Allow signal if entry requirements met OR score >= 85 (with minimum threshold check)
-            if long_check['valid'] or (score >= 85 and score >= threshold):
-                if not long_check['valid']:
-                    logger.warning(f"{symbol}: ⚠️  LONG entry requirements not fully met, but score is exceptional ({score}/100) - Creating signal with override")
-                    reason = f"High score override (85+): {long_check['reason']}"
-                else:
-                    logger.info(f"{symbol}: ✅ LONG entry conditions met | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
-                    reason = long_check['reason']
-                
-                self._create_signal_with_score(symbol, 'long', data, reason, score, breakdown, btc_position_mult)
-                return
-            else:
-                logger.info(f"{symbol}: ❌ Long entry failed | Score: {score}/100 (threshold: {threshold}) - {long_check['reason']}")
-            
-            # Check for short entry
-            short_check = EntryLogic.check_short_entry(data)
-            
-            # Calculate score first
-            score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
-            
-            # Allow signal if entry requirements met OR score >= 85 (with minimum threshold check)
-            if short_check['valid'] or (score >= 85 and score >= threshold):
-                if not short_check['valid']:
-                    logger.warning(f"{symbol}: ⚠️  SHORT entry requirements not fully met, but score is exceptional ({score}/100) - Creating signal with override")
-                    reason = f"High score override (85+): {short_check['reason']}"
-                else:
-                    logger.info(f"{symbol}: ✅ SHORT entry conditions met | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
-                    reason = short_check['reason']
-                
-                self._create_signal_with_score(symbol, 'short', data, reason, score, breakdown, btc_position_mult)
-                return
-            else:
-                logger.info(f"{symbol}: ❌ Short entry failed | Score: {score}/100 (threshold: {threshold}) - {short_check['reason']}")
-            
-            logger.debug(f"{symbol}: No entry conditions met")
-            
-        except Exception as e:
-            logger.error(f"Error scanning {symbol}: {e}")
-    
     def _create_signal_with_score(
         self,
         symbol: str,
@@ -347,6 +298,11 @@ class SignalBot:
             take_profits = StopTPCalculator.calculate_take_profits(
                 current_price, stop_loss, direction, regime
             )
+            
+            # Calculate Risk/Reward for TP1
+            risk = abs(current_price - stop_loss)
+            reward = abs(take_profits['tp1']['price'] - current_price)
+            rr_ratio = reward / risk if risk > 0 else 0
             
             # Get available margin (accounting for existing positions)
             available_margin = self.signal_tracker.get_available_margin(self.risk_manager.equity)
@@ -403,7 +359,8 @@ class SignalBot:
                     take_profits=take_profits,
                     position_size=position_size,
                     score=score,
-                    reason=entry_reason
+                    reason=entry_reason,
+                    rr=rr_ratio
                 )
                 
                 logger.success(f"✅ {direction.upper()} signal created for {symbol} | Score: {score}")

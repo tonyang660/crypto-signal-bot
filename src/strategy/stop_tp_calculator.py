@@ -31,82 +31,48 @@ class StopTPCalculator:
         symbol: str = ''
     ) -> float:
         """
-        Calculate stop loss level
-        
-        Uses tighter of:
-        - ATR-based stop
-        - Swing structure stop
-        
-        With hard cap at 2× ATR
-        
-        Args:
-            data: Multi-timeframe data dict
-            direction: 'long' or 'short'
-            entry_price: Entry price level
-            symbol: Trading symbol (for BTC-specific rules)
-        
-        Returns:
-            Stop loss price
+        Calculates a robust stop-loss based on market structure and volatility.
+        The primary method is to place the stop beyond a recent swing high/low, which represents a logical invalidation point.
+        An ATR-based stop is used as a fallback if no clear structure is found.
         """
-        try:
-            primary_df = data['primary']
-            
-            atr = primary_df['atr'].iloc[-1]
-            
-            # BTC-specific tighter stops
-            if symbol == 'BTCUSDT':
-                atr_multiplier = Config.BTC_ATR_MULTIPLIER
+        primary_df = data['primary']
+        atr = primary_df['atr'].iloc[-1]
+        
+        # Define a buffer to place the stop beyond the swing point, scaled by ATR
+        structure_buffer = atr * Config.ATR_STOP_MULTIPLIER
+
+        if direction == 'long':
+            # Primary SL: Below the most recent significant swing low
+            swing_low = MarketStructure.find_swing_low(primary_df, lookback=30)
+            if swing_low:
+                stop_loss = swing_low - structure_buffer
+                logger.info(f"Stop-loss based on swing low at ${swing_low:.4f} with a {structure_buffer:.4f} buffer.")
             else:
-                atr_multiplier = Config.ATR_STOP_MULTIPLIER
-            
-            if direction == 'long':
-                # ATR-based stop
-                stop_atr = entry_price - (atr_multiplier * atr)
-                
-                # Swing low stop
-                swing_low = MarketStructure.find_swing_low(primary_df, lookback=20)
-                if swing_low:
-                    stop_swing = swing_low - (0.2 * atr)  # Buffer below swing
-                else:
-                    stop_swing = stop_atr
-                
-                # Use tighter stop (higher value for long)
-                stop_loss = max(stop_atr, stop_swing)
-                
-                # Hard cap: stop distance cannot exceed 2× ATR
-                max_stop_distance = 2 * atr
-                if (entry_price - stop_loss) > max_stop_distance:
-                    stop_loss = entry_price - max_stop_distance
-            
-            else:  # short
-                # ATR-based stop
-                stop_atr = entry_price + (atr_multiplier * atr)
-                
-                # Swing high stop
-                swing_high = MarketStructure.find_swing_high(primary_df, lookback=20)
-                if swing_high:
-                    stop_swing = swing_high + (0.2 * atr)  # Buffer above swing
-                else:
-                    stop_swing = stop_atr
-                
-                # Use tighter stop (lower value for short)
-                stop_loss = min(stop_atr, stop_swing)
-                
-                # Hard cap
-                max_stop_distance = 2 * atr
-                if (stop_loss - entry_price) > max_stop_distance:
-                    stop_loss = entry_price + max_stop_distance
-            
-            return StopTPCalculator._smart_round(stop_loss)
-            
-        except Exception as e:
-            logger.error(f"Error calculating stop loss: {e}")
-            # Fallback to simple ATR-based stop
-            atr = data['primary']['atr'].iloc[-1]
-            if direction == 'long':
-                return StopTPCalculator._smart_round(entry_price - (1.5 * atr))
+                # Fallback: ATR-based stop if no swing low is found
+                stop_loss = entry_price - (atr * Config.ATR_STOP_MULTIPLIER * 1.5) # Wider fallback
+                logger.warning("No swing low found, using ATR-based fallback for stop-loss.")
+        
+        else:  # 'short'
+            # Primary SL: Above the most recent significant swing high
+            swing_high = MarketStructure.find_swing_high(primary_df, lookback=30)
+            if swing_high:
+                stop_loss = swing_high + structure_buffer
+                logger.info(f"Stop-loss based on swing high at ${swing_high:.4f} with a {structure_buffer:.4f} buffer.")
             else:
-                return StopTPCalculator._smart_round(entry_price + (1.5 * atr))
+                # Fallback: ATR-based stop
+                stop_loss = entry_price + (atr * Config.ATR_STOP_MULTIPLIER * 1.5)
+                logger.warning("No swing high found, using ATR-based fallback for stop-loss.")
+
+        # Ensure the stop-loss is not excessively wide (e.g., max 3x ATR from entry)
+        max_stop_dist = atr * 3
+        if direction == 'long' and (entry_price - stop_loss) > max_stop_dist:
+            stop_loss = entry_price - max_stop_dist
+            logger.warning(f"Stop-loss capped at 3x ATR distance from entry.")
+        elif direction == 'short' and (stop_loss - entry_price) > max_stop_dist:
+            stop_loss = entry_price + max_stop_dist
+            logger.warning(f"Stop-loss capped at 3x ATR distance from entry.")
+            
+        return StopTPCalculator._smart_round(stop_loss)
     
     @staticmethod
     def calculate_take_profits(

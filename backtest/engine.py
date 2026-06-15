@@ -819,54 +819,43 @@ class BacktestEngine:
                     continue
                 
                 # Add indicators with caching optimization
-                # HTF indicators cached (only recalc when HTF candle closes - every 48 entry candles)
                 data['htf'] = self._get_htf_indicators_cached(symbol, data['htf'], current_time)
-                # Primary indicators cached (only recalc when primary candle closes - every 3 entry candles)
                 data['primary'] = self._get_primary_indicators_cached(symbol, data['primary'], current_time)
-                # Entry timeframe cached (recalc only once per 5m candle, shared across all symbols at same timestamp)
                 data['entry'] = self._get_entry_indicators_cached(symbol, data['entry'], current_time)
-                
-                # Check individual symbol regime
+
+                # === REGIME-ADAPTIVE STRATEGY SELECTION ===
                 regime = RegimeDetector.detect_regime(data['primary'])
-                
-                if not RegimeDetector.should_trade_regime(regime):
-                    continue
-                
-                # Get base score threshold based on equity state
-                account_state = 'drawdown' if self.equity < self.initial_equity * 0.98 else 'normal'
-                base_threshold = BacktestConfig.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else BacktestConfig.SIGNAL_THRESHOLD_NORMAL
-                
-                # Apply BTC regime adjustment to threshold
-                threshold = base_threshold + btc_threshold_adj
-                
-                # Apply cooldown penalty adjustment to threshold
-                cooldown_penalty = self.daily_threshold_penalty + self.weekly_threshold_penalty
-                if cooldown_penalty > 0:
-                    threshold += cooldown_penalty
-                    self._log('info', f"{current_time} {symbol}: Cooldown penalty active +{cooldown_penalty}pt | Adjusted threshold: {threshold}")
-                
-                # Check long entry
-                long_check = EntryLogic.check_long_entry(data)
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'long', symbol)
-                
-                # Allow signal if entry requirements met OR score >= 85 (exceptional score override)
-                if (long_check['valid'] or score >= 85) and score >= threshold:
-                    reason = long_check['reason'] if long_check['valid'] else f"High score override (85+): {long_check['reason']}"
-                    self._create_position(symbol, 'long', data, current_time, reason, score, regime, btc_position_mult)
-                    continue
-                
-                # Check short entry
-                short_check = EntryLogic.check_short_entry(data)
-                score, breakdown = SignalScorer.calculate_score_with_breakdown(data, 'short', symbol)
-                
-                # Allow signal if entry requirements met OR score >= 85 (exceptional score override)
-                if (short_check['valid'] or score >= 85) and score >= threshold:
-                    reason = short_check['reason'] if short_check['valid'] else f"High score override (85+): {short_check['reason']}"
-                    self._create_position(symbol, 'short', data, current_time, reason, score, regime, btc_position_mult)
-                
+                strategy_type = RegimeDetector.get_regime_strategy(regime)
+
+                # Determine which checks to run
+                if strategy_type == 'Trend-Following':
+                    long_check = EntryLogic.check_trend_following_long(data)
+                    short_check = EntryLogic.check_trend_following_short(data)
+                elif strategy_type == 'Mean-Reversion':
+                    long_check = EntryLogic.check_mean_reversion_long(data)
+                    short_check = EntryLogic.check_mean_reversion_short(data)
+                else:
+                    continue # Skip if strategy is unknown
+
+                # Score and create position if valid
+                self._evaluate_and_create_position(symbol, 'long', data, current_time, long_check, regime, btc_position_mult)
+                self._evaluate_and_create_position(symbol, 'short', data, current_time, short_check, regime, btc_position_mult)
+
             except Exception as e:
                 self._log('error', f"Error scanning {symbol} at {current_time}: {e}")
-    
+
+    def _evaluate_and_create_position(self, symbol, direction, data, check_result, current_time, regime, btc_position_mult):
+        """Helper to evaluate entry and create a position."""
+        if check_result['valid']:
+            score, _ = SignalScorer.calculate_score_with_breakdown(data, direction, symbol)
+            
+            # Apply threshold checks
+            account_state = 'drawdown' if self.equity < self.initial_equity * 0.98 else 'normal'
+            threshold = BacktestConfig.SIGNAL_THRESHOLD_DRAWDOWN if account_state == 'drawdown' else BacktestConfig.SIGNAL_THRESHOLD_NORMAL
+
+            if score >= threshold:
+                self._create_position(symbol, direction, data, current_time, check_result['reason'], score, regime, btc_position_mult)
+
     def _create_position(self, symbol: str, direction: str, data: Dict, entry_time: datetime, reason: str, score: int, regime: str, btc_position_mult: float = 1.0):
         """Create new position (on candle close) - MATCHES LIVE BOT LOGIC"""
         entry_price = data['entry']['close'].iloc[-1]

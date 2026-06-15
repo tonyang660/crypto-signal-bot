@@ -33,14 +33,18 @@ class DiscordNotifier:
         take_profits: Dict,
         position_size: Dict,
         score: int,
-        reason: str
+        reason: str,
+        rr: float = 0.0
     ) -> bool:
         """Send new signal notification"""
         try:
-            # Calculate risk/reward
-            risk = abs(entry_price - stop_loss)
-            tp1_reward = abs(take_profits['tp1']['price'] - entry_price)
-            rr_ratio = tp1_reward / risk if risk > 0 else 0
+            # Calculate risk/reward if not provided
+            if rr == 0.0:
+                risk = abs(entry_price - stop_loss)
+                tp1_reward = abs(take_profits['tp1']['price'] - entry_price)
+                rr_ratio = tp1_reward / risk if risk > 0 else 0
+            else:
+                rr_ratio = rr
             
             # Extract base asset and contracts
             base_asset = symbol[:-4]  # Remove USDT
@@ -81,7 +85,7 @@ class DiscordNotifier:
                     },
                     {
                         "name": "⚖️ Risk/Reward",
-                        "value": f"{rr_ratio:.2f}R",
+                        "value": f"**{rr_ratio:.2f}R**",
                         "inline": True
                     },
                     {
