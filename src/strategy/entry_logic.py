@@ -217,9 +217,9 @@ class EntryLogic:
             if abs(macd_hist) < abs(macd_hist_2) * 0.5:
                 return {'valid': False, 'reason': 'MACD momentum too weak (losing strength)'}
             
-            # 5. Entry Trigger (5M pullback to EMA21)
-            if not MarketStructure.is_price_near_ema(entry_df, 'ema_21', 0.002):
-                return {'valid': False, 'reason': 'Price not near EMA21'}
+            # 5. Entry Trigger (5M pullback to ema_fast)
+            if not MarketStructure.is_price_near_ema(entry_df, 'ema_fast', 0.002):
+                return {'valid': False, 'reason': 'Price not near ema_fast'}
             
             # Check we're not entering right at a recent swing low (support)
             swing_low = MarketStructure.find_swing_low(primary_df, lookback=20)
@@ -314,9 +314,9 @@ class EntryLogic:
             if abs(macd_hist) < abs(macd_hist_2) * 0.5:
                 return {'valid': False, 'reason': 'MACD momentum too weak (losing strength)'}
             
-            # 5. Entry Trigger (pullback to EMA21)
-            if not MarketStructure.is_price_near_ema(entry_df, 'ema_21', 0.002):
-                return {'valid': False, 'reason': 'Price not near EMA21'}
+            # 5. Entry Trigger (pullback to ema_fast)
+            if not MarketStructure.is_price_near_ema(entry_df, 'ema_fast', 0.002):
+                return {'valid': False, 'reason': 'Price not near ema_fast'}
             
             # Check we're not entering right at a recent swing high (resistance)
             swing_high = MarketStructure.find_swing_high(primary_df, lookback=20)

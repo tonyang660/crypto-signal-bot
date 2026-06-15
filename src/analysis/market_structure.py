@@ -14,45 +14,45 @@ class MarketStructure:
         """
         try:
             last_price = df['close'].iloc[-1]
-            ema_21 = df['ema_21'].iloc[-1]
-            ema_50 = df['ema_50'].iloc[-1]
-            ema_200 = df['ema_200'].iloc[-1]
+            ema_fast = df['ema_fast'].iloc[-1]
+            ema_medium = df['ema_medium'].iloc[-1]
+            ema_slow = df['ema_slow'].iloc[-1]
             
             # === BULLISH CONDITIONS ===
             # Strong bullish: Perfect EMA order
-            if last_price > ema_21 and ema_21 > ema_50 and ema_50 > ema_200:
+            if last_price > ema_fast and ema_fast > ema_medium and ema_medium > ema_slow:
                 return 'bullish'
             
-            # Bullish with momentum: Price and EMA21 above EMA50, even if EMA50 hasn't crossed EMA200 yet
+            # Bullish with momentum: Price and ema_fast above ema_medium, even if ema_medium hasn't crossed ema_slow yet
             # This catches strong bullish moves where fast EMAs respond but slow ones lag
-            elif last_price > ema_21 and last_price > ema_50 and ema_21 > ema_50:
-                # Verify it's not just a spike - check EMA21 is meaningfully above EMA50
-                ema21_above_ema50 = (ema_21 - ema_50) / ema_50
-                if ema21_above_ema50 > 0.005:  # EMA21 > 0.5% above EMA50
+            elif last_price > ema_fast and last_price > ema_medium and ema_fast > ema_medium:
+                # Verify it's not just a spike - check ema_fast is meaningfully above ema_medium
+                ema_fast_above_ema_medium = (ema_fast - ema_medium) / ema_medium
+                if ema_fast_above_ema_medium > 0.005:  # ema_fast > 0.5% above ema_medium
                     return 'bullish'
             
             # Bullish with strong price action: Price significantly above all EMAs
-            elif last_price > ema_21 and last_price > ema_50 and last_price > ema_200:
+            elif last_price > ema_fast and last_price > ema_medium and last_price > ema_slow:
                 # Check if price is strongly above (indicates momentum)
-                price_above_ema200 = (last_price - ema_200) / ema_200
-                if price_above_ema200 > 0.02:  # Price > 2% above EMA200
+                price_above_ema_slow = (last_price - ema_slow) / ema_slow
+                if price_above_ema_slow > 0.02:  # Price > 2% above ema_slow
                     return 'bullish'
             
             # === BEARISH CONDITIONS ===
             # Strong bearish: Perfect EMA order
-            elif last_price < ema_21 and ema_21 < ema_50 and ema_50 < ema_200:
+            elif last_price < ema_fast and ema_fast < ema_medium and ema_medium < ema_slow:
                 return 'bearish'
             
-            # Bearish with momentum: Price and EMA21 below EMA50
-            elif last_price < ema_21 and last_price < ema_50 and ema_21 < ema_50:
-                ema21_below_ema50 = (ema_50 - ema_21) / ema_50
-                if ema21_below_ema50 > 0.005:  # EMA21 > 0.5% below EMA50
+            # Bearish with momentum: Price and ema_fast below ema_medium
+            elif last_price < ema_fast and last_price < ema_medium and ema_fast < ema_medium:
+                ema_fast_below_ema_medium = (ema_medium - ema_fast) / ema_medium
+                if ema_fast_below_ema_medium > 0.005:  # ema_fast > 0.5% below ema_medium
                     return 'bearish'
             
             # Bearish with strong price action: Price significantly below all EMAs
-            elif last_price < ema_21 and last_price < ema_50 and last_price < ema_200:
-                price_below_ema200 = (ema_200 - last_price) / ema_200
-                if price_below_ema200 > 0.02:  # Price > 2% below EMA200
+            elif last_price < ema_fast and last_price < ema_medium and last_price < ema_slow:
+                price_below_ema_slow = (ema_slow - last_price) / ema_slow
+                if price_below_ema_slow > 0.02:  # Price > 2% below ema_slow
                     return 'bearish'
             
             # Neutral/Mixed

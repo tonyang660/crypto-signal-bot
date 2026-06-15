@@ -68,9 +68,9 @@ class Indicators:
         from src.core.config import Config
         
         # EMAs
-        df['ema_21'] = Indicators.calculate_ema(df, Config.EMA_FAST)
-        df['ema_50'] = Indicators.calculate_ema(df, Config.EMA_MEDIUM)
-        df['ema_200'] = Indicators.calculate_ema(df, Config.EMA_SLOW)
+        df['ema_fast'] = Indicators.calculate_ema(df, Config.EMA_FAST)
+        df['ema_medium'] = Indicators.calculate_ema(df, Config.EMA_MEDIUM)
+        df['ema_slow'] = Indicators.calculate_ema(df, Config.EMA_SLOW)
         
         # MACD
         macd_data = Indicators.calculate_macd(
