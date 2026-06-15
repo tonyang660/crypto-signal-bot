@@ -13,35 +13,35 @@ class RegimeDetector:
     @staticmethod
     def detect_regime(df: pd.DataFrame, period: int = 20) -> str:
         """
-        Detects the market regime using the slope of a Simple Moving Average (SMA).
+        Detects the market regime using the slope of the medium-term Exponential Moving Average (EMA).
 
         Args:
-            df (pd.DataFrame): DataFrame with at least 'close' prices and an 'sma' column.
+            df (pd.DataFrame): DataFrame with at least 'close' prices and an 'ema_medium' column.
             period (int): The lookback period to determine the trend.
 
         Returns:
             str: 'Uptrend', 'Downtrend', or 'Sideways'.
         """
-        if 'sma' not in df.columns:
-            logger.warning("SMA not found in DataFrame. Cannot detect regime.")
+        if 'ema_medium' not in df.columns:
+            logger.warning("EMA (medium) not found in DataFrame. Cannot detect regime.")
             return 'Sideways'
 
-        # Calculate the percentage change of the SMA over the specified period
-        sma_values = df['sma'].tail(period)
-        if len(sma_values) < period:
+        # Calculate the percentage change of the EMA over the specified period
+        ema_values = df['ema_medium'].tail(period)
+        if len(ema_values) < period:
             return 'Sideways'  # Not enough data
 
-        start_sma = sma_values.iloc[0]
-        end_sma = sma_values.iloc[-1]
+        start_ema = ema_values.iloc[0]
+        end_ema = ema_values.iloc[-1]
 
-        if start_sma == 0:
+        if start_ema == 0:
             return 'Sideways'
 
-        slope_pct = ((end_sma - start_sma) / start_sma) * 100
+        slope_pct = ((end_ema - start_ema) / start_ema) * 100
 
         # Define thresholds for trend determination
-        uptrend_threshold = 0.5  # e.g., SMA increased by 0.5% over the period
-        downtrend_threshold = -0.5 # e.g., SMA decreased by 0.5% over the period
+        uptrend_threshold = 0.5  # e.g., EMA increased by 0.5% over the period
+        downtrend_threshold = -0.5 # e.g., EMA decreased by 0.5% over the period
 
         if slope_pct > uptrend_threshold:
             return 'Uptrend'

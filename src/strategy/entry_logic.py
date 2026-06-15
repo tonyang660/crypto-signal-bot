@@ -68,7 +68,7 @@ class EntryLogic:
             return {'valid': False, 'reason': 'MR Long: Not in a sideways market.'}
 
         # 2. Identify a clear support level using recent swing lows
-        support_level = MarketStructure.find_swing_low(primary_df, lookback=50, prominence_percent=0.01)
+        support_level = MarketStructure.find_swing_low(primary_df, lookback=50)
         if support_level is None:
             return {'valid': False, 'reason': 'MR Long: No clear support level found.'}
 
@@ -112,7 +112,7 @@ class EntryLogic:
             return {'valid': False, 'reason': 'MR Short: Not in a sideways market.'}
 
         # 2. Identify a clear resistance level
-        resistance_level = MarketStructure.find_swing_high(primary_df, lookback=50, prominence_percent=0.01)
+        resistance_level = MarketStructure.find_swing_high(primary_df, lookback=50)
         if resistance_level is None:
             return {'valid': False, 'reason': 'MR Short: No clear resistance level found.'}
 
