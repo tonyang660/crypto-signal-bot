@@ -124,7 +124,14 @@ class SignalScorer:
         breakdown['volatility']['details'] = details
 
         total_score = sum(b['points'] for b in breakdown.values())
-        logger.info(f"[{symbol} TF Score: {total_score}] " + " | ".join([f"{k[:4]}: {v['points']}" for k, v in breakdown.items()]))
+        
+        # Log the detailed breakdown
+        log_message = f"{symbol} {direction.upper()} signal score breakdown (Trend-Following):\n"
+        for key, value in breakdown.items():
+            log_message += f"  - {key.replace('_', ' ').title():<20}: {value['points']:>2}/{value['max']} - {value['details']}\n"
+        log_message += f"  TOTAL SCORE: {total_score}/100"
+        logger.info(log_message)
+
         return total_score, breakdown
 
     @staticmethod
@@ -196,7 +203,14 @@ class SignalScorer:
             breakdown['low_volatility']['details'] = f"Volatility stable ({atr_ratio:.2f}x avg)"
 
         total_score = sum(b['points'] for b in breakdown.values())
-        logger.info(f"[{symbol} MR Score: {total_score}] " + " | ".join([f"{k[:4]}: {v['points']}" for k, v in breakdown.items()]))
+
+        # Log the detailed breakdown
+        log_message = f"{symbol} {direction.upper()} signal score breakdown (Mean-Reversion):\n"
+        for key, value in breakdown.items():
+            log_message += f"  - {key.replace('_', ' ').title():<20}: {value['points']:>2}/{value['max']} - {value['details']}\n"
+        log_message += f"  TOTAL SCORE: {total_score}/100"
+        logger.info(log_message)
+
         return total_score, breakdown
 
     @staticmethod
