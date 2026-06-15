@@ -53,7 +53,7 @@ class SignalScorer:
 
         # 1. HTF Trend Alignment
         htf_trend = MarketStructure.get_trend_direction(htf_df)
-        price_vs_ema_dist = (htf_df['close'].iloc[-1] - htf_df['ema_200'].iloc[-1]) / htf_df['ema_200'].iloc[-1]
+        price_vs_ema_dist = (htf_df['close'].iloc[-1] - htf_df['ema_slow'].iloc[-1]) / htf_df['ema_slow'].iloc[-1]
         
         if direction == 'long':
             if htf_trend == 'bullish':
@@ -103,7 +103,7 @@ class SignalScorer:
         breakdown['rsi_quality']['details'] = f"RSI at {rsi:.1f} in {'momentum' if (is_bullish_context or is_bearish_context) else 'reversal'} context"
 
         # 4. Entry Location
-        dist_from_ema = abs(entry_df['close'].iloc[-1] - entry_df['ema_21'].iloc[-1]) / primary_df['atr'].iloc[-1]
+        dist_from_ema = abs(entry_df['close'].iloc[-1] - entry_df['ema_fast'].iloc[-1]) / primary_df['atr'].iloc[-1]
         points = 20 if dist_from_ema < 0.3 else (14 if dist_from_ema < 0.6 else (8 if dist_from_ema < 1.0 else 3))
         breakdown['entry_location']['points'] = points
         breakdown['entry_location']['details'] = f"{dist_from_ema:.2f} ATR from EMA21"

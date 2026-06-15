@@ -94,7 +94,7 @@ class MarketStructure:
         
         Args:
             df: DataFrame with price and EMA data
-            ema_col: Column name of EMA (e.g., 'ema_21')
+            ema_col: Column name of EMA (e.g., 'ema_fast')
             threshold: Distance threshold (default 0.3%)
         
         Returns:
