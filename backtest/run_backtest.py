@@ -35,7 +35,7 @@ def main():
     print("SIGNAL BOT BACKTEST")
     print("="*80)
     print(f"Period:           {BacktestConfig.START_DATE.strftime('%Y-%m-%d')} to {BacktestConfig.END_DATE.strftime('%Y-%m-%d')}")
-    print(f"Symbols:          {len(symbols_to_use)} symbols with complete data")
+    print(f"Symbols:          {len(symbols_to_use)} configured symbols")
     print(f"Symbol List:      {', '.join(symbols_to_use)}")
     print(f"Initial Capital:  ${BacktestConfig.INITIAL_CAPITAL:,.0f}")
     print(f"Conservative:     {BacktestConfig.CONSERVATIVE_MODE}")
@@ -61,7 +61,12 @@ def main():
             BacktestConfig.ENTRY_TIMEFRAME
         ]
     )
-    
+
+    for symbol, tf_data in data.items():
+        print(f"\n{symbol}")
+        for tf, df in tf_data.items():
+            print(f"  {tf}: {len(df)} candles | {df.index.min()} -> {df.index.max()}")
+        
     if not data:
         if BacktestConfig.ENABLE_LOGGING:
             logger.error("Failed to fetch data - aborting backtest")

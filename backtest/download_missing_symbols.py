@@ -10,24 +10,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.download_binance_data import BinanceDataDownloader
+from backtest.check_missing_data import check_missing_data_files
+from src.core.config import Config
 from loguru import logger
 import time
 
 def main():
     """Download data only for missing symbols"""
     
-    # Symbols that are missing from data_binance
-    MISSING_SYMBOLS = [
-        'BGBUSDT',      # May have limited availability
-        'CROUSDT',
-        'NEARUSDT',
-        'PEPEUSDT',     # Newer (2023+)
-        'SEIUSDT',
-        'SHIBUSDT',
-        'XDCUSDT',      # May have limited availability
-    ]
-    
-    INTERVALS = ['5m', '15m', '1h', '4h']
+    missing_symbols = check_missing_data_files()
+    if not missing_symbols:
+        logger.info("All configured symbols already have the required data files.")
+        return
+
+    INTERVALS = [Config.ENTRY_TIMEFRAME, Config.PRIMARY_TIMEFRAME, Config.HTF_TIMEFRAME]
     START_YEAR = 2021
     MARKET_TYPE = 'futures'  # Try futures first for better availability
     
@@ -36,7 +32,7 @@ def main():
     logger.info("\n" + "="*70)
     logger.info("DOWNLOADING MISSING SYMBOLS DATA")
     logger.info("="*70)
-    logger.info(f"Symbols to download: {', '.join(MISSING_SYMBOLS)}")
+    logger.info(f"Symbols to download: {', '.join(missing_symbols)}")
     logger.info(f"Timeframes: {', '.join(INTERVALS)}")
     logger.info(f"Starting from: {START_YEAR}")
     logger.info(f"Market type: {MARKET_TYPE}")
@@ -47,7 +43,7 @@ def main():
     time.sleep(3)
     
     downloader.download_all_for_backtesting(
-        symbols=MISSING_SYMBOLS,
+        symbols=missing_symbols,
         intervals=INTERVALS,
         start_year=START_YEAR,
         market_type=MARKET_TYPE

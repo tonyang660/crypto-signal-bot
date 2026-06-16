@@ -201,20 +201,29 @@ class BacktestEngine:
         self._log('info', f"Backtest period: {start_date} to {end_date}")
         self._log('info', f"Total candles: {len(sorted_dates)}")
         
-        # Apply warmup period if configured
-        if hasattr(BacktestConfig, 'WARMUP_DATE'):
-            warmup_date = BacktestConfig.WARMUP_DATE
-            self._log('info', f"Warmup period: {start_date} to {warmup_date} (indicators only, no trading)")
-            self._log('info', f"Trading period: {warmup_date} to {end_date}")
-        else:
+        # Apply warmup period if configured. Clamp it to the loaded data range so
+        # a stale config cannot place the trading window after the backtest ends.
+        warmup_date = getattr(BacktestConfig, 'WARMUP_DATE', start_date)
+        if warmup_date <= start_date:
             warmup_date = start_date
+        elif warmup_date > end_date:
+            warmup_days = getattr(BacktestConfig, 'WARMUP_DAYS', 30)
+            fallback_warmup = start_date + timedelta(days=warmup_days)
+            warmup_date = fallback_warmup if fallback_warmup <= end_date else start_date
+            self._log('warning', f"Configured warmup ended after data range; using {warmup_date} instead")
+
+        self._log('info', f"Warmup period: {start_date} to {warmup_date} (indicators only, no trading)")
+        self._log('info', f"Trading period: {warmup_date} to {end_date}")
         
         # Process each candle with progress bar
+        trading_started = False
         iterator = enumerate(sorted_dates)
         if BacktestConfig.SHOW_PROGRESS_BAR and TQDM_AVAILABLE:
-            # Update progress bar at most every 1 second to reduce overhead
             iterator = tqdm(iterator, total=len(sorted_dates), desc="Running backtest", unit="candles", leave=True, ncols=100, mininterval=1.0, miniters=100)
-        
+
+        self._log('info', f"Total candles to process: {len(sorted_dates)}")
+        self._log('info', f"Warmup ends at: {warmup_date}")
+
         for i, current_time in iterator:
             # Daily reset
             self._check_daily_reset(current_time)
@@ -222,22 +231,22 @@ class BacktestEngine:
             # Update active positions (check TP/SL)
             self._update_positions(current_time)
             
-            # Skip signal scanning during warmup period
-            if current_time < warmup_date:
-                self.equity_curve.append((current_time, self.equity))
-                continue
+            # Check if trading period has started
+            is_trading_period = current_time >= warmup_date
             
-            # Check if trading allowed
-            can_trade, reason = self._can_trade(current_time)
-            
-            if not can_trade:
-                self._log('debug', f"{current_time}: Trading disabled - {reason}")
-                continue
-            
-            # Scan for new signals
-            self._scan_for_signals(current_time)
-            
-            # Record equity
+            if not trading_started and is_trading_period:
+                self._log('info', f"Trading period started at {current_time}")
+                trading_started = True
+
+            # Scan for new signals only during the trading period
+            if is_trading_period:
+                can_trade, reason = self._can_trade(current_time)
+                if can_trade:
+                    self._scan_for_signals(current_time)
+                else:
+                    self._log('debug', f"{current_time}: Trading disabled - {reason}")
+
+            # Record equity at every candle
             self.equity_curve.append((current_time, self.equity))
         
         # Close any remaining positions at end
@@ -838,8 +847,8 @@ class BacktestEngine:
                     continue # Skip if strategy is unknown
 
                 # Score and create position if valid
-                self._evaluate_and_create_position(symbol, 'long', data, current_time, long_check, regime, btc_position_mult)
-                self._evaluate_and_create_position(symbol, 'short', data, current_time, short_check, regime, btc_position_mult)
+                self._evaluate_and_create_position(symbol, 'long', data, long_check, current_time, regime, btc_position_mult)
+                self._evaluate_and_create_position(symbol, 'short', data, short_check, current_time, regime, btc_position_mult)
 
             except Exception as e:
                 self._log('error', f"Error scanning {symbol} at {current_time}: {e}")

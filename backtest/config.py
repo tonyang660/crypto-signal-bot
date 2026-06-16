@@ -16,9 +16,10 @@ class BacktestConfig:
     # Historical data from Binance: 2021-2024 (4 years)
     # For 15-20 minute backtest, use 6 months of data
     # Add 1 month warmup period for indicators (200+ candles needed for EMA200)
-    START_DATE = datetime(2024, 12, 15)  # Start 1 month earlier for warmup
-    WARMUP_DATE = datetime(2025, 1, 1)  # Begin actual backtest here (after warmup)
-    END_DATE = datetime(2025, 12, 30)  # End of backtest period
+    START_DATE = datetime(2024, 11, 1)  # Start earlier than the trading period for warmup
+    WARMUP_DAYS = 30  # Indicator warmup before live trading begins
+    WARMUP_DATE = START_DATE + timedelta(days=WARMUP_DAYS)
+    END_DATE = datetime(2024, 12, 31, 23, 59)  # End of backtest period
     
     # ==================== INITIAL CONDITIONS ====================
     INITIAL_CAPITAL = Config.INITIAL_CAPITAL  # Use live bot capital
@@ -40,7 +41,7 @@ class BacktestConfig:
     # ==================== TRADING PAIRS ====================
     # Dynamically determined based on available data for date range
     # Set to None to auto-detect all available symbols, or provide a list to filter
-    SYMBOLS = Config.TRADING_PAIRS # Auto-detect all available symbols
+    SYMBOLS = None  # Auto-detect symbols with complete data coverage
     
     # Optional: Restrict to specific symbols (None = use all available)
     SYMBOL_FILTER = None  # e.g., ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] or None for all
@@ -74,6 +75,8 @@ class BacktestConfig:
                     cls.ENTRY_TIMEFRAME
                 ]
             )
+            configured_symbols = set(Config.TRADING_PAIRS)
+            available_symbols = [s for s in available_symbols if s in configured_symbols]
             
             # Apply filter if specified
             if cls.SYMBOL_FILTER is not None:

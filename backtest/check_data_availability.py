@@ -149,7 +149,7 @@ class DataAvailabilityChecker:
         if data_start is None or data_end is None:
             return False
         
-        return data_start <= start_date and data_end >= end_date
+        return data_start.date() <= start_date.date() and data_end.date() >= end_date.date()
     
     def get_available_symbols_for_range(
         self,
@@ -215,18 +215,18 @@ class DataAvailabilityChecker:
                     symbol, timeframe
                 )
                 
-                if data_start > start_date:
+                if data_start.date() > start_date.date():
                     report[symbol][timeframe] = (
                         f"Data starts {data_start.strftime('%Y-%m-%d')} "
                         f"(need {start_date.strftime('%Y-%m-%d')})"
                     )
-                elif data_end < end_date:
+                elif data_end.date() < end_date.date():
                     report[symbol][timeframe] = (
                         f"Data ends {data_end.strftime('%Y-%m-%d')} "
                         f"(need {end_date.strftime('%Y-%m-%d')})"
                     )
                 else:
-                    report[symbol][timeframe] = "✓ Complete"
+                    report[symbol][timeframe] = "Complete"
         
         return report
     
@@ -286,7 +286,7 @@ class DataAvailabilityChecker:
         for symbol in symbols:
             if symbol in report:
                 all_complete = all(
-                    report[symbol].get(tf, "").startswith("✓") 
+                    report[symbol].get(tf, "") == "Complete" 
                     for tf in timeframes
                 )
                 if all_complete:
@@ -294,12 +294,12 @@ class DataAvailabilityChecker:
                 else:
                     incomplete_symbols.append(symbol)
         
-        print(f"\n✓ Complete Coverage: {len(complete_symbols)}/{len(symbols)} symbols")
+        print(f"\nComplete Coverage: {len(complete_symbols)}/{len(symbols)} symbols")
         if complete_symbols:
             print(f"   {', '.join(complete_symbols)}")
         
         if incomplete_symbols:
-            print(f"\n✗ Incomplete Coverage: {len(incomplete_symbols)} symbols")
+            print(f"\nIncomplete Coverage: {len(incomplete_symbols)} symbols")
             print("\nDetailed Issues:")
             print("-"*80)
             
@@ -307,7 +307,7 @@ class DataAvailabilityChecker:
                 print(f"\n{symbol}:")
                 for timeframe in timeframes:
                     status = report[symbol].get(timeframe, "Unknown")
-                    if not status.startswith("✓"):
+                    if status != "Complete":
                         print(f"  {timeframe:<6} {status}")
         
         print("\n" + "="*80 + "\n")
