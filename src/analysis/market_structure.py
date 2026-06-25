@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 from loguru import logger
 
 class MarketStructure:
@@ -82,6 +82,87 @@ class MarketStructure:
         except Exception as e:
             logger.error(f"Error finding swing high: {e}")
             return None
+
+    @staticmethod
+    def analyze_mean_reversion_range(df: pd.DataFrame, lookback: int = 24) -> Dict:
+        """
+        Analyze the local sideways box used by mean-reversion entries.
+
+        This intentionally uses a shorter local window than broad swing detection so
+        a recent impulse leg does not make the current consolidation look like an
+        extreme inside a stale 50-bar range.
+        """
+        try:
+            if len(df) < lookback:
+                return {
+                    'valid': False,
+                    'reason': f'Need at least {lookback} bars for local range analysis'
+                }
+
+            recent = df.tail(lookback)
+            current_price = df['close'].iloc[-1]
+            support = recent['low'].min()
+            resistance = recent['high'].max()
+            range_width = resistance - support
+
+            if range_width <= 0:
+                return {'valid': False, 'reason': 'Invalid local range width'}
+
+            atr = df['atr'].iloc[-1] if 'atr' in df.columns else 0
+            atr_sma = df['atr_sma'].iloc[-1] if 'atr_sma' in df.columns else atr
+            atr_ratio = atr / atr_sma if atr_sma else 1.0
+            range_width_atr = range_width / atr if atr else 0
+            range_position = (current_price - support) / range_width
+
+            buffer = 0.15 * atr if atr else 0
+            recent_closes = recent['close'].tail(8)
+            closes_above = int((recent_closes > resistance + buffer).sum())
+            closes_below = int((recent_closes < support - buffer).sum())
+            last_close = recent['close'].iloc[-1]
+            previous_close = recent['close'].iloc[-2] if len(recent) > 1 else last_close
+            upper_pressure = range_position >= 0.85 and last_close > previous_close
+            lower_pressure = range_position <= 0.15 and last_close < previous_close
+
+            adx = df['adx'].iloc[-1] if 'adx' in df.columns else 0
+            ema_fast = df['ema_fast'].iloc[-1] if 'ema_fast' in df.columns else current_price
+            ema_slow = df['ema_slow'].iloc[-1] if 'ema_slow' in df.columns else current_price
+            ema_spread_pct = abs(ema_fast - ema_slow) / current_price if current_price else 0
+
+            breakout_risk_reasons = []
+            if closes_above or closes_below:
+                breakout_risk_reasons.append('recent close outside range')
+            if atr_ratio > 1.0:
+                breakout_risk_reasons.append(f'ATR expanding ({atr_ratio:.2f}x avg)')
+            if adx > 16:
+                breakout_risk_reasons.append(f'ADX too high ({adx:.1f})')
+            if ema_spread_pct > 0.01:
+                breakout_risk_reasons.append(f'EMA spread too wide ({ema_spread_pct*100:.2f}%)')
+            if range_width_atr < 1.5:
+                breakout_risk_reasons.append(f'range too tight ({range_width_atr:.1f} ATR)')
+            if range_width_atr > 5.0:
+                breakout_risk_reasons.append(f'range too wide ({range_width_atr:.1f} ATR)')
+            if upper_pressure:
+                breakout_risk_reasons.append('price pressing upper boundary')
+            if lower_pressure:
+                breakout_risk_reasons.append('price pressing lower boundary')
+
+            return {
+                'valid': len(breakout_risk_reasons) == 0,
+                'support': support,
+                'resistance': resistance,
+                'width': range_width,
+                'position': max(0.0, min(1.0, range_position)),
+                'atr': atr,
+                'atr_ratio': atr_ratio,
+                'range_width_atr': range_width_atr,
+                'buffer': buffer,
+                'breakout_risk_reasons': breakout_risk_reasons,
+                'reason': '; '.join(breakout_risk_reasons) if breakout_risk_reasons else 'Contained local range'
+            }
+
+        except Exception as e:
+            logger.error(f"Error analyzing mean-reversion range: {e}")
+            return {'valid': False, 'reason': f'Range analysis error: {e}'}
     
     @staticmethod
     def is_price_near_ema(

@@ -23,8 +23,9 @@ class SignalScorer:
 
     # --- Scoring Weights for Mean-Reversion ---
     MEAN_REVERSION_WEIGHTS = {
-        'range_confirmation': 30,
-        'reversal_pattern': 25,
+        'range_confirmation': 20,
+        'breakout_safety': 15,
+        'reversal_pattern': 20,
         'entry_extremity': 20,
         'rsi_divergence': 15,
         'low_volatility': 10,
@@ -146,46 +147,53 @@ class SignalScorer:
         primary_df = data['primary']
         entry_df = data['entry']
         
+        range_info = MarketStructure.analyze_mean_reversion_range(primary_df)
+
         # 1. Range Confirmation (Is the market truly sideways?)
         regime = RegimeDetector.detect_regime(primary_df)
         if regime == 'Sideways':
-            breakdown['range_confirmation']['points'] = 30
+            breakdown['range_confirmation']['points'] = 20
             breakdown['range_confirmation']['details'] = "Confirmed sideways market"
         else:
             breakdown['range_confirmation']['points'] = 0
             breakdown['range_confirmation']['details'] = f"Market is not sideways ({regime})"
 
-        # 2. Reversal Pattern (e.g., MACD turning)
+        # 2. Breakout Safety (only score contained, low-expansion ranges)
+        if range_info.get('valid'):
+            breakdown['breakout_safety']['points'] = 15
+            breakdown['breakout_safety']['details'] = (
+                f"Contained range ({range_info.get('range_width_atr', 0):.1f} ATR wide, "
+                f"ATR {range_info.get('atr_ratio', 0):.2f}x avg)"
+            )
+        else:
+            breakdown['breakout_safety']['points'] = 0
+            breakdown['breakout_safety']['details'] = range_info.get('reason', 'Range not safe')
+
+        # 3. Reversal Pattern (e.g., MACD turning)
         macd_hist_entry = entry_df['macd_hist'].iloc[-1]
         macd_hist_prev_entry = entry_df['macd_hist'].iloc[-2]
         if (direction == 'long' and macd_hist_entry > macd_hist_prev_entry) or \
            (direction == 'short' and macd_hist_entry < macd_hist_prev_entry):
-            breakdown['reversal_pattern']['points'] = 25
+            breakdown['reversal_pattern']['points'] = 20
             breakdown['reversal_pattern']['details'] = "5m MACD confirming reversal"
         else:
-            breakdown['reversal_pattern']['points'] = 10
+            breakdown['reversal_pattern']['points'] = 8
             breakdown['reversal_pattern']['details'] = "5m MACD not yet confirming"
 
-        # 3. Entry Extremity (How close is the entry to the range high/low?)
-        swing_high = MarketStructure.find_swing_high(primary_df, lookback=50)
-        swing_low = MarketStructure.find_swing_low(primary_df, lookback=50)
-        current_price = entry_df['close'].iloc[-1]
-        
-        if swing_high and swing_low:
-            price_range = swing_high - swing_low
-            if price_range > 0:
-                if direction == 'long':
-                    proximity_to_low = 1 - ((current_price - swing_low) / price_range)
-                    points = int(20 * max(0, min(1, proximity_to_low)))
-                    details = f"Entry in bottom {100-proximity_to_low*100:.0f}% of range"
-                else: # short
-                    proximity_to_high = 1 - ((swing_high - current_price) / price_range)
-                    points = int(20 * max(0, min(1, proximity_to_high)))
-                    details = f"Entry in top {100-proximity_to_high*100:.0f}% of range"
-                breakdown['entry_extremity']['points'] = points
-                breakdown['entry_extremity']['details'] = details
+        # 4. Entry Extremity (How close is the entry to the local range edge?)
+        range_position = range_info.get('position')
+        if range_position is not None:
+            if direction == 'long':
+                edge_score = (0.5 - range_position) / 0.5
+                details = f"Entry at {range_position*100:.0f}% of local range (0%=support)"
+            else:
+                edge_score = (range_position - 0.5) / 0.5
+                details = f"Entry at {range_position*100:.0f}% of local range (100%=resistance)"
 
-        # 4. RSI Divergence / Oversold/Overbought
+            breakdown['entry_extremity']['points'] = int(20 * max(0, min(1, edge_score)))
+            breakdown['entry_extremity']['details'] = details
+
+        # 5. RSI Divergence / Oversold/Overbought
         rsi = primary_df['rsi'].iloc[-1]
         if direction == 'long':
             points = 15 if rsi < 35 else (10 if rsi < 45 else 5)
@@ -196,14 +204,16 @@ class SignalScorer:
         breakdown['rsi_divergence']['points'] = points
         breakdown['rsi_divergence']['details'] = details
 
-        # 5. Low Volatility (ATR contracting)
+        # 6. Low Volatility (ATR contracting)
         atr_ratio = primary_df['atr'].iloc[-1] / primary_df['atr_sma'].iloc[-1]
         if atr_ratio < 0.9:
             breakdown['low_volatility']['points'] = 10
             breakdown['low_volatility']['details'] = f"Volatility contracting ({atr_ratio:.2f}x avg)"
-        elif atr_ratio < 1.1:
+        elif atr_ratio <= 1.0:
             breakdown['low_volatility']['points'] = 5
             breakdown['low_volatility']['details'] = f"Volatility stable ({atr_ratio:.2f}x avg)"
+        else:
+            breakdown['low_volatility']['details'] = f"Volatility expanding ({atr_ratio:.2f}x avg)"
 
         total_score = sum(b['points'] for b in breakdown.values())
 

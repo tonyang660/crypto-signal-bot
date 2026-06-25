@@ -67,18 +67,21 @@ class EntryLogic:
         if RegimeDetector.detect_regime(primary_df) != 'Sideways':
             return {'valid': False, 'reason': 'MR Long: Not in a sideways market.'}
 
-        # 2. Identify a clear support level using recent swing lows
-        support_level = MarketStructure.find_swing_low(primary_df, lookback=50)
-        if support_level is None:
-            return {'valid': False, 'reason': 'MR Long: No clear support level found.'}
+        # 2. Identify a contained local range, not a stale broad swing range
+        range_info = MarketStructure.analyze_mean_reversion_range(primary_df)
+        if not range_info.get('valid'):
+            return {'valid': False, 'reason': f"MR Long: Breakout risk too high ({range_info.get('reason', 'range not safe')})."}
 
         # 3. Entry Trigger: Price must be close to the identified support level
         current_price = entry_df['close'].iloc[-1]
         atr = primary_df['atr'].iloc[-1]
+        support_level = range_info['support']
+        resistance_level = range_info['resistance']
+        range_width = resistance_level - support_level
         
-        # Define a "support zone" around the level
-        support_zone_top = support_level + (0.3 * atr)
-        support_zone_bottom = support_level - (0.3 * atr)
+        # Define a support zone in the bottom quarter of the confirmed local box.
+        support_zone_bottom = support_level - (0.15 * atr)
+        support_zone_top = support_level + min(0.25 * range_width, 0.8 * atr)
 
         if not (support_zone_bottom <= current_price <= support_zone_top):
             return {'valid': False, 'reason': f'MR Long: Price ${current_price:.2f} not in support zone (${support_zone_bottom:.2f}-${support_zone_top:.2f}).'}
@@ -87,7 +90,7 @@ class EntryLogic:
         # a) RSI showing bullish divergence or coming out of oversold
         rsi = primary_df['rsi'].iloc[-1]
         rsi_prev = primary_df['rsi'].iloc[-2]
-        if not (rsi > rsi_prev and rsi < 45):
+        if not (rsi > rsi_prev and rsi <= 48):
             return {'valid': False, 'reason': f'MR Long: RSI {rsi:.1f} not showing bullish confirmation.'}
 
         # b) Entry timeframe (5m) MACD must be turning up
@@ -96,7 +99,7 @@ class EntryLogic:
         if macd_5m_hist <= macd_5m_hist_prev:
             return {'valid': False, 'reason': 'MR Long: 5m MACD momentum is not turning positive.'}
 
-        return {'valid': True, 'reason': f'Mean-reversion long triggered near support ${support_level:.2f} with reversal confirmation.'}
+        return {'valid': True, 'reason': f'Mean-reversion long triggered near contained support ${support_level:.2f} with low breakout risk.'}
 
     @staticmethod
     def check_mean_reversion_short(data: Dict[str, pd.DataFrame]) -> dict:
@@ -111,18 +114,21 @@ class EntryLogic:
         if RegimeDetector.detect_regime(primary_df) != 'Sideways':
             return {'valid': False, 'reason': 'MR Short: Not in a sideways market.'}
 
-        # 2. Identify a clear resistance level
-        resistance_level = MarketStructure.find_swing_high(primary_df, lookback=50)
-        if resistance_level is None:
-            return {'valid': False, 'reason': 'MR Short: No clear resistance level found.'}
+        # 2. Identify a contained local range, not a stale broad swing range
+        range_info = MarketStructure.analyze_mean_reversion_range(primary_df)
+        if not range_info.get('valid'):
+            return {'valid': False, 'reason': f"MR Short: Breakout risk too high ({range_info.get('reason', 'range not safe')})."}
 
         # 3. Entry Trigger: Price must be close to the identified resistance level
         current_price = entry_df['close'].iloc[-1]
         atr = primary_df['atr'].iloc[-1]
+        support_level = range_info['support']
+        resistance_level = range_info['resistance']
+        range_width = resistance_level - support_level
 
-        # Define a "resistance zone"
-        resistance_zone_top = resistance_level + (0.3 * atr)
-        resistance_zone_bottom = resistance_level - (0.3 * atr)
+        # Define a resistance zone in the top quarter of the confirmed local box.
+        resistance_zone_top = resistance_level + (0.15 * atr)
+        resistance_zone_bottom = resistance_level - min(0.25 * range_width, 0.8 * atr)
 
         if not (resistance_zone_bottom <= current_price <= resistance_zone_top):
             return {'valid': False, 'reason': f'MR Short: Price ${current_price:.2f} not in resistance zone (${resistance_zone_bottom:.2f}-${resistance_zone_top:.2f}).'}
@@ -131,7 +137,7 @@ class EntryLogic:
         # a) RSI showing bearish divergence or coming out of overbought
         rsi = primary_df['rsi'].iloc[-1]
         rsi_prev = primary_df['rsi'].iloc[-2]
-        if not (rsi < rsi_prev and rsi > 55):
+        if not (rsi < rsi_prev and rsi >= 52):
             return {'valid': False, 'reason': f'MR Short: RSI {rsi:.1f} not showing bearish confirmation.'}
 
         # b) Entry timeframe (5m) MACD must be turning down
@@ -140,7 +146,7 @@ class EntryLogic:
         if macd_5m_hist >= macd_5m_hist_prev:
             return {'valid': False, 'reason': 'MR Short: 5m MACD momentum is not turning negative.'}
 
-        return {'valid': True, 'reason': f'Mean-reversion short triggered near resistance ${resistance_level:.2f} with reversal confirmation.'}
+        return {'valid': True, 'reason': f'Mean-reversion short triggered near contained resistance ${resistance_level:.2f} with low breakout risk.'}
     
     @staticmethod
     def check_long_entry(data: Dict[str, pd.DataFrame]) -> dict:
