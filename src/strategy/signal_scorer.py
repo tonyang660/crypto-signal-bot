@@ -31,10 +31,13 @@ class SignalScorer:
     }
 
     @staticmethod
-    def calculate_score_with_breakdown(data: Dict[str, pd.DataFrame], direction: str, symbol: str, regime: str) -> tuple:
+    def calculate_score_with_breakdown(data: Dict[str, pd.DataFrame], direction: str, symbol: str, regime: str = None) -> tuple:
         """
         Routes to the appropriate scoring logic based on the market regime.
         """
+        if regime is None:
+            regime = RegimeDetector.detect_regime(data['primary'])
+
         if regime == 'Sideways':
             return SignalScorer._score_mean_reversion(data, direction, symbol)
         else:

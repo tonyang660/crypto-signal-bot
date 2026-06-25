@@ -1,6 +1,6 @@
 import pandas as pd
 from loguru import logger
-from .indicators import Indicators
+from .market_structure import MarketStructure
 
 class RegimeDetector:
     """
@@ -13,7 +13,10 @@ class RegimeDetector:
     @staticmethod
     def detect_regime(df: pd.DataFrame, period: int = 20) -> str:
         """
-        Detects the market regime using the slope of the medium-term Exponential Moving Average (EMA).
+        Detects the market regime using trend structure, EMA slope, ADX, and range compression.
+
+        Sideways must be proven by weak trend strength and compressed range. This keeps
+        mean-reversion from taking over during ordinary pullbacks inside real trends.
 
         Args:
             df (pd.DataFrame): DataFrame with at least 'close' prices and an 'ema_medium' column.
@@ -22,15 +25,19 @@ class RegimeDetector:
         Returns:
             str: 'Uptrend', 'Downtrend', or 'Sideways'.
         """
-        if 'ema_medium' not in df.columns:
-            logger.warning("EMA (medium) not found in DataFrame. Cannot detect regime.")
+        required_columns = {'close', 'high', 'low', 'ema_fast', 'ema_medium', 'ema_slow', 'atr', 'atr_sma'}
+        missing_columns = required_columns - set(df.columns)
+        if missing_columns:
+            logger.warning(f"Missing columns for regime detection: {', '.join(sorted(missing_columns))}")
             return 'Sideways'
+
+        if len(df) < max(period, 50):
+            return 'Sideways'  # Not enough data
+
+        trend_direction = MarketStructure.get_trend_direction(df)
 
         # Calculate the percentage change of the EMA over the specified period
         ema_values = df['ema_medium'].tail(period)
-        if len(ema_values) < period:
-            return 'Sideways'  # Not enough data
-
         start_ema = ema_values.iloc[0]
         end_ema = ema_values.iloc[-1]
 
@@ -38,17 +45,42 @@ class RegimeDetector:
             return 'Sideways'
 
         slope_pct = ((end_ema - start_ema) / start_ema) * 100
+        adx = df['adx'].iloc[-1] if 'adx' in df.columns else 0
+        current_atr = df['atr'].iloc[-1]
+        avg_atr = df['atr_sma'].iloc[-1]
+        atr_ratio = current_atr / avg_atr if avg_atr else 1.0
+
+        recent = df.tail(50)
+        range_pct = (recent['high'].max() - recent['low'].min()) / df['close'].iloc[-1]
+        ema_spread_pct = abs(df['ema_fast'].iloc[-1] - df['ema_slow'].iloc[-1]) / df['close'].iloc[-1]
 
         # Define thresholds for trend determination
-        uptrend_threshold = 0.5  # e.g., EMA increased by 0.5% over the period
-        downtrend_threshold = -0.5 # e.g., EMA decreased by 0.5% over the period
+        uptrend_threshold = 0.25
+        downtrend_threshold = -0.25
+        min_trend_adx = 18
+        sideways_max_adx = 16
+        sideways_max_range_pct = 0.035
+        sideways_max_ema_spread_pct = 0.012
 
-        if slope_pct > uptrend_threshold:
+        if trend_direction == 'bullish' and (slope_pct > uptrend_threshold or adx >= min_trend_adx):
+            return 'Uptrend'
+        elif trend_direction == 'bearish' and (slope_pct < downtrend_threshold or adx >= min_trend_adx):
+            return 'Downtrend'
+        elif (
+            trend_direction == 'neutral'
+            and abs(slope_pct) < uptrend_threshold
+            and adx <= sideways_max_adx
+            and range_pct <= sideways_max_range_pct
+            and ema_spread_pct <= sideways_max_ema_spread_pct
+            and atr_ratio <= 1.15
+        ):
+            return 'Sideways'
+        elif slope_pct > uptrend_threshold:
             return 'Uptrend'
         elif slope_pct < downtrend_threshold:
             return 'Downtrend'
-        else:
-            return 'Sideways'
+
+        return 'Sideways'
 
     @staticmethod
     def get_regime_strategy(regime: str) -> str:
@@ -67,6 +99,11 @@ class RegimeDetector:
             return 'Mean-Reversion'
         else:
             return 'Trend-Following'  # Default strategy
+
+    @staticmethod
+    def should_trade_regime(regime: str) -> bool:
+        """Compatibility helper for diagnostic/backtest scripts."""
+        return regime in ['Uptrend', 'Downtrend', 'Sideways']
     
     @staticmethod
     def check_btc_regime(btc_data: pd.DataFrame) -> dict:

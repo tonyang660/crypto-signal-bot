@@ -856,7 +856,7 @@ class BacktestEngine:
     def _evaluate_and_create_position(self, symbol, direction, data, check_result, current_time, regime, btc_position_mult):
         """Helper to evaluate entry and create a position."""
         if check_result['valid']:
-            score, _ = SignalScorer.calculate_score_with_breakdown(data, direction, symbol)
+            score, _ = SignalScorer.calculate_score_with_breakdown(data, direction, symbol, regime)
             
             # Apply threshold checks
             account_state = 'drawdown' if self.equity < self.initial_equity * 0.98 else 'normal'
@@ -1085,7 +1085,9 @@ class BacktestEngine:
         
         # Condition 2: Regime deterioration
         if BacktestConfig.ADAPTIVE_STOP_REGIME_CHANGE:
-            if entry_regime in ['trending', 'strong_trend'] and current_regime in ['choppy', 'ranging', 'low_volatility']:
+            trending_regimes = ['trending', 'strong_trend', 'Uptrend', 'Downtrend']
+            sideways_regimes = ['choppy', 'ranging', 'low_volatility', 'Sideways']
+            if entry_regime in trending_regimes and current_regime in sideways_regimes:
                 if trigger_reason:
                     trigger_reason += f" + regime {entry_regime}→{current_regime}"
                 else:

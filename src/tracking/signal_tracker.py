@@ -696,7 +696,9 @@ class SignalTracker:
             trigger_reason = f"volatility spike +{spike_pct:.1f}%"
         
         # Condition 2: Regime deterioration
-        if entry_regime in ['trending', 'strong_trend'] and current_regime in ['choppy', 'ranging']:
+        trending_regimes = ['trending', 'strong_trend', 'Uptrend', 'Downtrend']
+        sideways_regimes = ['choppy', 'ranging', 'low_volatility', 'Sideways']
+        if entry_regime in trending_regimes and current_regime in sideways_regimes:
             if trigger_reason:
                 trigger_reason += f" + regime {entry_regime}→{current_regime}"
             else:

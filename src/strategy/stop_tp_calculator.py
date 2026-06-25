@@ -100,7 +100,7 @@ class StopTPCalculator:
         """
         try:
             # Adjust TP ratios based on regime
-            if regime == 'trending':
+            if regime in ('trending', 'strong_trend', 'Uptrend', 'Downtrend'):
                 # Let winners run in strong trends
                 tp1_ratio = Config.TP1_RATIO
                 tp2_ratio = Config.TP2_RATIO
