@@ -31,6 +31,43 @@ class SignalTracker:
             self._save_active_signals()
         if not Path(Config.HISTORY_SIGNALS_FILE).exists():
             self._save_history()
+
+    @staticmethod
+    def _normalize_direction(direction: str) -> str:
+        return str(direction).lower()
+
+    @staticmethod
+    def _fee_rate(order_type: str) -> float:
+        order_type = str(order_type).lower()
+        if order_type == 'maker':
+            return Config.MAKER_FEE_PERCENT / 100
+        if order_type == 'taker':
+            return Config.TAKER_FEE_PERCENT / 100
+        logger.warning(f"Unknown order type '{order_type}', defaulting to taker fee")
+        return Config.TAKER_FEE_PERCENT / 100
+
+    @classmethod
+    def _calculate_fee(cls, trade_value: float, order_type: str) -> float:
+        return abs(trade_value) * cls._fee_rate(order_type)
+
+    @staticmethod
+    def _apply_spread(price: float, direction: str, side: str) -> float:
+        """
+        Apply half-spread against the trade.
+
+        Long entry buys at ask, long exit sells at bid.
+        Short entry sells at bid, short exit buys at ask.
+        """
+        half_spread = Config.MIN_SPREAD_PERCENT / 100 / 2
+        direction = SignalTracker._normalize_direction(direction)
+
+        if direction == 'long':
+            return price * (1 + half_spread) if side == 'entry' else price * (1 - half_spread)
+        return price * (1 - half_spread) if side == 'entry' else price * (1 + half_spread)
+
+    @staticmethod
+    def _spread_cost(reference_price: float, execution_price: float, contracts: float) -> float:
+        return abs(execution_price - reference_price) * contracts
     
     def get_total_margin_used(self) -> float:
         """Calculate total margin currently used by all active signals"""
@@ -120,13 +157,20 @@ class SignalTracker:
         """
         try:
             # Generate unique signal ID
+            direction = self._normalize_direction(direction)
             signal_id = f"{symbol}_{direction}_{int(datetime.now().timestamp())}"
+            contracts = position_size.get('contracts', 0)
+            execution_entry_price = self._apply_spread(entry_price, direction, 'entry')
+            entry_value = execution_entry_price * contracts
+            entry_fee = self._calculate_fee(entry_value, Config.ENTRY_ORDER_TYPE)
+            entry_spread_cost = self._spread_cost(entry_price, execution_entry_price, contracts)
             
             signal = {
                 'signal_id': signal_id,
                 'symbol': symbol,
                 'direction': direction,
                 'entry_price': entry_price,
+                'execution_entry_price': execution_entry_price,
                 'stop_loss': stop_loss,
                 'original_stop_loss': stop_loss,  # Store original for R calculation
                 'take_profits': take_profits,
@@ -141,8 +185,13 @@ class SignalTracker:
                 'tp3_hit': False,
                 'stop_hit': False,
                 'remaining_percent': 100,
-                'contracts_remaining': position_size.get('contracts', 0),  # Track actual asset amount remaining
-                'realized_pnl': 0.0,
+                'contracts_remaining': contracts,  # Track actual asset amount remaining
+                'realized_pnl': -entry_fee,
+                'entry_fee': entry_fee,
+                'total_fees_paid': entry_fee,
+                'entry_spread_cost': entry_spread_cost,
+                'total_spread_cost': entry_spread_cost,
+                'entry_order_type': Config.ENTRY_ORDER_TYPE,
                 'current_price': entry_price,
                 'best_price': entry_price,  # Track best price achieved
                 'entry_atr': atr,  # Store entry ATR for adaptive stop comparison
@@ -157,7 +206,7 @@ class SignalTracker:
             # Save to file
             self._save_active_signals()
             
-            logger.info(f"✅ Signal created: {signal_id}")
+            logger.info(f"Signal created: {signal_id} | Entry fee: ${entry_fee:.2f} ({Config.ENTRY_ORDER_TYPE}) | Entry spread cost: ${entry_spread_cost:.2f} | Total fees: ${signal['total_fees_paid']:.2f} | Realized PnL: ${signal['realized_pnl']:+.2f}")
             
             return signal_id
             
@@ -361,7 +410,7 @@ class SignalTracker:
             logger.warning(f"{symbol}: {tp_level.upper()} close adjusted from {signal['take_profits'][tp_level]['close_percent']}% to {close_percent}% (remaining)")
         
         # Calculate PnL for this portion
-        entry_price = signal['entry_price']
+        entry_price = signal.get('execution_entry_price', signal['entry_price'])
         # Use actual TP price instead of current market price (simulates preset order execution)
         exit_price = signal['take_profits'][tp_level]['price']
         direction = signal['direction']
@@ -373,16 +422,25 @@ class SignalTracker:
             portion_contracts = contracts_remaining * (close_percent / signal['remaining_percent'])
         else:
             portion_contracts = 0
+
+        execution_exit_price = self._apply_spread(exit_price, direction, 'exit')
+        exit_value = execution_exit_price * portion_contracts
+        exit_fee = self._calculate_fee(exit_value, Config.TAKE_PROFIT_ORDER_TYPE)
+        exit_spread_cost = self._spread_cost(exit_price, execution_exit_price, portion_contracts)
         
         if direction == 'long':
-            pnl = (exit_price - entry_price) * portion_contracts
+            gross_pnl = (execution_exit_price - entry_price) * portion_contracts
         else:
-            pnl = (entry_price - exit_price) * portion_contracts
+            gross_pnl = (entry_price - execution_exit_price) * portion_contracts
+
+        pnl = gross_pnl - exit_fee
         
         # Update signal
         signal['realized_pnl'] += pnl
         signal['remaining_percent'] -= close_percent
         signal['contracts_remaining'] = contracts_remaining - portion_contracts
+        signal['total_fees_paid'] = signal.get('total_fees_paid', 0.0) + exit_fee
+        signal['total_spread_cost'] = signal.get('total_spread_cost', 0.0) + exit_spread_cost
         
         # Apply trailing stop strategy
         old_stop = signal['stop_loss']
@@ -399,9 +457,15 @@ class SignalTracker:
             'type': 'tp_hit',
             'level': tp_level,
             'price': exit_price,  # Use TP price (preset order execution)
+            'execution_price': execution_exit_price,
             'close_percent': close_percent,
             'contracts_closed': portion_contracts,
             'pnl': pnl,
+            'gross_pnl': gross_pnl,
+            'exit_fee': exit_fee,
+            'total_fees': signal['total_fees_paid'],
+            'exit_spread_cost': exit_spread_cost,
+            'total_spread_cost': signal['total_spread_cost'],
             'total_pnl': signal['realized_pnl'],
             'remaining_percent': signal['remaining_percent'],
             'contracts_remaining': signal['contracts_remaining'],
@@ -409,7 +473,14 @@ class SignalTracker:
             'signal': signal.copy()  # Include signal data
         }
         
-        logger.info(f"🎯 {tp_level.upper()} hit for {symbol} at ${exit_price:.4f} | Closed {portion_contracts:.4f} {base_asset} ({close_percent:.1f}%) | PnL: ${pnl:+.2f} | Remaining: {signal['contracts_remaining']:.4f} {base_asset} ({signal['remaining_percent']:.1f}%)")
+        logger.info(
+            f"{tp_level.upper()} hit for {symbol} at ${exit_price:.4f} "
+            f"(exec ${execution_exit_price:.4f}) | Closed {portion_contracts:.4f} {base_asset} "
+            f"({close_percent:.1f}%) | Gross PnL: ${gross_pnl:+.2f} | Exit fee: ${exit_fee:.2f} "
+            f"| Net PnL: ${pnl:+.2f} | Total fees: ${signal['total_fees_paid']:.2f} "
+            f"| Total spread cost: ${signal['total_spread_cost']:.2f} | Total PnL: ${signal['realized_pnl']:+.2f} "
+            f"| Remaining: {signal['contracts_remaining']:.4f} {base_asset} ({signal['remaining_percent']:.1f}%)"
+        )
         
         # If all position closed or remaining too small, move to history
         if signal['remaining_percent'] <= 0:
@@ -438,29 +509,38 @@ class SignalTracker:
             logger.info(f"⚡ Partial protection stop hit for {symbol} - exiting 50% at breakeven")
             
             # Exit 50% of remaining position at breakeven
-            entry_price = signal['entry_price']
+            entry_price = signal.get('execution_entry_price', signal['entry_price'])
             buffer = entry_price * Config.ADAPTIVE_STOP_BREAKEVEN_BUFFER
             direction = signal['direction']
             
             if direction == 'long':
-                exit_price = entry_price + buffer
+                exit_price = signal['entry_price'] + buffer
             else:
-                exit_price = entry_price - buffer
+                exit_price = signal['entry_price'] - buffer
             
             contracts = signal['position_size']['contracts']
             contracts_remaining = signal.get('contracts_remaining', contracts * (signal['remaining_percent'] / 100))
             partial_contracts = contracts_remaining * 0.5  # Exit 50%
             
-            # Calculate PnL for this partial exit (should be near breakeven)
+            execution_exit_price = self._apply_spread(exit_price, direction, 'exit')
+            exit_value = execution_exit_price * partial_contracts
+            exit_fee = self._calculate_fee(exit_value, Config.STOP_LOSS_ORDER_TYPE)
+            exit_spread_cost = self._spread_cost(exit_price, execution_exit_price, partial_contracts)
+
+            # Calculate PnL for this partial exit (should be near breakeven before costs)
             if direction == 'long':
-                partial_pnl = (exit_price - entry_price) * partial_contracts
+                gross_partial_pnl = (execution_exit_price - entry_price) * partial_contracts
             else:
-                partial_pnl = (entry_price - exit_price) * partial_contracts
+                gross_partial_pnl = (entry_price - execution_exit_price) * partial_contracts
+
+            partial_pnl = gross_partial_pnl - exit_fee
             
             # Update signal state
             signal['realized_pnl'] += partial_pnl
             signal['remaining_percent'] *= 0.5  # 50% remains
             signal['contracts_remaining'] = contracts_remaining - partial_contracts
+            signal['total_fees_paid'] = signal.get('total_fees_paid', 0.0) + exit_fee
+            signal['total_spread_cost'] = signal.get('total_spread_cost', 0.0) + exit_spread_cost
             # Backward compatibility: use stop_loss if original_stop_loss doesn't exist
             original_stop = signal.get('original_stop_loss', signal['stop_loss'])
             signal['stop_loss'] = original_stop  # Restore original stop for remaining 50%
@@ -474,7 +554,13 @@ class SignalTracker:
             hit_info = {
                 'type': 'partial_protection_exit',
                 'price': exit_price,
+                'execution_price': execution_exit_price,
                 'partial_pnl': partial_pnl,
+                'gross_pnl': gross_partial_pnl,
+                'exit_fee': exit_fee,
+                'total_fees': signal['total_fees_paid'],
+                'exit_spread_cost': exit_spread_cost,
+                'total_spread_cost': signal['total_spread_cost'],
                 'contracts_closed': partial_contracts,
                 'contracts_remaining': signal['contracts_remaining'],
                 'percent_exited': 50,
@@ -484,8 +570,11 @@ class SignalTracker:
             }
             
             logger.success(
-                f"✅ {symbol} Partial protection: {partial_contracts:.4f} {base_asset} (50%) exited at ${exit_price:.4f} "
-                f"(PnL: ${partial_pnl:+.2f}), {signal['contracts_remaining']:.4f} {base_asset} (50%) continues with stop at ${signal['stop_loss']:.4f}"
+                f"{symbol} Partial protection: {partial_contracts:.4f} {base_asset} (50%) exited at ${exit_price:.4f} "
+                f"(exec ${execution_exit_price:.4f}) | Gross PnL: ${gross_partial_pnl:+.2f} | Exit fee: ${exit_fee:.2f} "
+                f"| Net PnL: ${partial_pnl:+.2f} | Total fees: ${signal['total_fees_paid']:.2f} "
+                f"| Total spread cost: ${signal['total_spread_cost']:.2f} | {signal['contracts_remaining']:.4f} {base_asset} "
+                f"(50%) continues with stop at ${signal['stop_loss']:.4f}"
             )
             
             return hit_info
@@ -494,7 +583,7 @@ class SignalTracker:
         signal['stop_hit'] = True
         
         # Calculate P&L of remaining position (can be negative, zero, or positive)
-        entry_price = signal['entry_price']
+        entry_price = signal.get('execution_entry_price', signal['entry_price'])
         stop_price = signal['stop_loss']
         contracts = signal['position_size']['contracts']
         direction = signal['direction']
@@ -506,13 +595,23 @@ class SignalTracker:
         if remaining_contracts <= 0:
             remaining_contracts = contracts * (signal['remaining_percent'] / 100)
             logger.warning(f"{symbol}: contracts_remaining was {signal.get('contracts_remaining', 0)}, calculated from percent: {remaining_contracts:.4f}")
+
+        execution_stop_price = self._apply_spread(stop_price, direction, 'exit')
+        exit_value = execution_stop_price * remaining_contracts
+        exit_fee = self._calculate_fee(exit_value, Config.STOP_LOSS_ORDER_TYPE)
+        exit_spread_cost = self._spread_cost(stop_price, execution_stop_price, remaining_contracts)
         
         if direction == 'long':
-            remaining_pnl = (stop_price - entry_price) * remaining_contracts
+            gross_remaining_pnl = (execution_stop_price - entry_price) * remaining_contracts
         else:
-            remaining_pnl = (entry_price - stop_price) * remaining_contracts
+            gross_remaining_pnl = (entry_price - execution_stop_price) * remaining_contracts
+
+        remaining_pnl = gross_remaining_pnl - exit_fee
+        signal['total_fees_paid'] = signal.get('total_fees_paid', 0.0) + exit_fee
+        signal['total_spread_cost'] = signal.get('total_spread_cost', 0.0) + exit_spread_cost
+        signal['realized_pnl'] += remaining_pnl
         
-        total_pnl = signal['realized_pnl'] + remaining_pnl
+        total_pnl = signal['realized_pnl']
         
         # Extract base asset symbol
         base_asset = symbol[:-4]
@@ -520,13 +619,25 @@ class SignalTracker:
         hit_info = {
             'type': 'stop_hit',
             'price': stop_price,  # Use actual SL price, not current market price (simulates real order execution)
+            'execution_price': execution_stop_price,
             'remaining_pnl': remaining_pnl,  # P&L from remaining position (can be negative, zero, or positive)
+            'gross_pnl': gross_remaining_pnl,
+            'exit_fee': exit_fee,
+            'total_fees': signal['total_fees_paid'],
+            'exit_spread_cost': exit_spread_cost,
+            'total_spread_cost': signal['total_spread_cost'],
             'total_pnl': total_pnl,
             'contracts_closed': remaining_contracts,
             'signal': signal.copy()  # Include signal data before closing
         }
         
-        logger.warning(f"🛑 Stop loss hit for {symbol} | Closed {remaining_contracts:.4f} {base_asset} ({signal['remaining_percent']:.1f}%) | Remaining PnL: ${remaining_pnl:+.2f} | Total PnL: ${total_pnl:+.2f}")
+        logger.warning(
+            f"Stop loss hit for {symbol} at ${stop_price:.4f} (exec ${execution_stop_price:.4f}) "
+            f"| Closed {remaining_contracts:.4f} {base_asset} ({signal['remaining_percent']:.1f}%) "
+            f"| Gross PnL: ${gross_remaining_pnl:+.2f} | Exit fee: ${exit_fee:.2f} "
+            f"| Net remaining PnL: ${remaining_pnl:+.2f} | Total fees: ${signal['total_fees_paid']:.2f} "
+            f"| Total spread cost: ${signal['total_spread_cost']:.2f} | Total PnL: ${total_pnl:+.2f}"
+        )
         
         # Close signal
         self._close_signal(symbol, 'stopped')
@@ -602,15 +713,27 @@ class SignalTracker:
             total_contracts = signal['position_size']['contracts']
             summary.append(f"   Position: {contracts_remaining:.4f} {base_asset} ({signal['remaining_percent']:.0f}% of {total_contracts:.4f})")
             summary.append(f"   Realized P&L: ${signal['realized_pnl']:+.2f}")
+            summary.append(f"   Total Fees: ${signal.get('total_fees_paid', 0):.2f}")
+            summary.append(f"   Spread Cost: ${signal.get('total_spread_cost', 0):.2f}")
             
-            # Calculate unrealized P&L
+            # Calculate estimated unrealized P&L net of spread and closing taker fee
             current_price = signal.get('current_price', signal['entry_price'])
-            remaining_contracts = signal['position_size']['contracts'] * (signal['remaining_percent'] / 100)
+            remaining_contracts = signal.get(
+                'contracts_remaining',
+                signal['position_size']['contracts'] * (signal['remaining_percent'] / 100)
+            )
+            execution_entry_price = signal.get('execution_entry_price', signal['entry_price'])
+            execution_current_price = self._apply_spread(current_price, signal['direction'], 'exit')
+            estimated_close_fee = self._calculate_fee(
+                execution_current_price * remaining_contracts,
+                Config.STOP_LOSS_ORDER_TYPE
+            )
             if signal['direction'] == 'long':
-                unrealized = (current_price - signal['entry_price']) * remaining_contracts
+                unrealized = (execution_current_price - execution_entry_price) * remaining_contracts
             else:
-                unrealized = (signal['entry_price'] - current_price) * remaining_contracts
-            summary.append(f"   Unrealized P&L: ${unrealized:+.2f}")
+                unrealized = (execution_entry_price - execution_current_price) * remaining_contracts
+            unrealized -= estimated_close_fee
+            summary.append(f"   Unrealized P&L: ${unrealized:+.2f} (net est. close fee ${estimated_close_fee:.2f})")
             summary.append(f"   Total P&L: ${signal['realized_pnl'] + unrealized:+.2f}")
             
             # Time info - handle both 'entry_time' and 'created_at'
@@ -667,7 +790,7 @@ class SignalTracker:
         original_stop = signal.get('original_stop_loss', signal['stop_loss'])
         direction = signal['direction']
         
-        if direction == 'LONG':
+        if self._normalize_direction(direction) == 'long':
             stop_distance = entry - original_stop
             profit_distance = current_price - entry
         else:  # SHORT
@@ -710,7 +833,7 @@ class SignalTracker:
         # Calculate new stop: breakeven + small buffer
         buffer = entry * Config.ADAPTIVE_STOP_BREAKEVEN_BUFFER
         
-        if direction == 'LONG':
+        if self._normalize_direction(direction) == 'long':
             new_stop = entry + buffer
             # Only tighten, never widen
             if new_stop <= signal['stop_loss']:

@@ -53,6 +53,7 @@ from src.risk.risk_manager import RiskManager
 from src.tracking.signal_tracker import SignalTracker
 from src.tracking.performance_logger import PerformanceLogger
 from src.notifications.discord_notifier import DiscordNotifier
+from src.notifications.active_positions_notifier import ActivePositionsNotifier
 
 class SignalBot:
     """Main signal bot orchestrator"""
@@ -70,6 +71,7 @@ class SignalBot:
         self.signal_tracker = SignalTracker()
         self.performance_logger = PerformanceLogger()
         self.discord = DiscordNotifier()
+        self.active_positions_notifier = ActivePositionsNotifier()
         
         # Initialize risk manager with performance logger (for daily report saving)
         self.risk_manager = RiskManager(performance_logger=self.performance_logger, discord=self.discord)
@@ -116,6 +118,7 @@ class SignalBot:
                 logger.warning(f"Trading disabled for new signals: {reason}")
                 if active_symbols:
                     logger.info(f"✓ Continuing to monitor {len(active_symbols)} existing signal(s)")
+                self._publish_active_positions_summary()
                 return
             
             # Log total exposure
@@ -147,17 +150,22 @@ class SignalBot:
                     continue
             
             # Log summary
-            active_count = len(self.signal_tracker.get_all_active_signals())
-            logger.info(f"✓ Scan complete | Active signals: {active_count}")
-            
-            # Show detailed active signals summary if any exist
-            if active_count > 0:
-                summary = self.signal_tracker.get_active_signals_summary()
-                logger.info(summary)
+            self._publish_active_positions_summary()
             
         except Exception as e:
             logger.error(f"Error in scan_markets: {e}")
             self.discord.send_error(f"Scan error: {str(e)}")
+
+    def _publish_active_positions_summary(self):
+        """Log and send active positions to the dedicated webhook."""
+        active_count = len(self.signal_tracker.get_all_active_signals())
+        logger.info(f"Scan complete | Active signals: {active_count}")
+
+        summary = self.signal_tracker.get_active_signals_summary()
+        if active_count > 0:
+            logger.info(summary)
+
+        self.active_positions_notifier.send_active_positions(summary, active_count)
     
     def _scan_symbol(self, symbol: str):
         """Scan individual symbol for entry opportunities"""
@@ -350,6 +358,15 @@ class SignalBot:
             )
             
             if signal_id:
+                signal = self.signal_tracker.get_active_signal(symbol) or {}
+                entry_fee = signal.get('entry_fee', 0.0)
+                if entry_fee:
+                    self.risk_manager.record_trade(-entry_fee)
+                    logger.info(
+                        f"{symbol}: Entry fee recorded immediately: -${entry_fee:.2f} | "
+                        f"Total fees: ${signal.get('total_fees_paid', entry_fee):.2f}"
+                    )
+
                 # Send Discord notification
                 self.discord.send_new_signal(
                     symbol=symbol,
@@ -360,7 +377,12 @@ class SignalBot:
                     position_size=position_size,
                     score=score,
                     reason=entry_reason,
-                    rr=rr_ratio
+                    rr=rr_ratio,
+                    execution_costs={
+                        'entry_fee': entry_fee,
+                        'entry_spread_cost': signal.get('entry_spread_cost', 0.0),
+                        'total_fees': signal.get('total_fees_paid', entry_fee),
+                    }
                 )
                 
                 logger.success(f"✅ {direction.upper()} signal created for {symbol} | Score: {score}")
@@ -450,7 +472,11 @@ class SignalBot:
                         new_stop_loss=hit_info.get('new_stop_loss'),
                         contracts_remaining=hit_info.get('contracts_remaining'),
                         contracts_closed=hit_info.get('contracts_closed'),
-                        close_percent=hit_info.get('close_percent')
+                        close_percent=hit_info.get('close_percent'),
+                        exit_fee=hit_info.get('exit_fee'),
+                        total_fees=hit_info.get('total_fees'),
+                        spread_cost=hit_info.get('exit_spread_cost'),
+                        total_spread_cost=hit_info.get('total_spread_cost')
                     )
                     
                     # Calculate duration for logging
@@ -482,9 +508,13 @@ class SignalBot:
                         symbol=symbol,
                         direction=signal['direction'],
                         price=hit_info['price'],  # Use actual SL price
-                        total_pnl=hit_info['remaining_pnl'],  # P&L from remaining position only
+                        total_pnl=hit_info['total_pnl'],
                         contracts_closed=hit_info.get('contracts_closed'),
-                        remaining_percent=signal.get('remaining_percent', 100)
+                        remaining_percent=signal.get('remaining_percent', 100),
+                        exit_fee=hit_info.get('exit_fee'),
+                        total_fees=hit_info.get('total_fees'),
+                        spread_cost=hit_info.get('exit_spread_cost'),
+                        total_spread_cost=hit_info.get('total_spread_cost')
                     )
                     
                     # Calculate duration
@@ -521,6 +551,9 @@ class SignalBot:
                         f"**Details:**\n"
                         f"Direction: {signal['direction'].upper()}\n"
                         f"Exit Price: ${hit_info['price']:.4f}\n"
+                        f"Exit Fee: ${hit_info.get('exit_fee', 0):.2f}\n"
+                        f"Total Fees: ${hit_info.get('total_fees', 0):.2f}\n"
+                        f"Spread Cost: ${hit_info.get('total_spread_cost', 0):.2f}\n"
                         f"Partial PnL: ${hit_info['partial_pnl']:+.2f}\n"
                         f"Remaining: {hit_info['percent_remaining']:.0f}%\n"
                         f"New Stop: ${hit_info['new_stop']:.4f} (original)\n\n"

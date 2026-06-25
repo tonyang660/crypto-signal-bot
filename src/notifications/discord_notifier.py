@@ -34,7 +34,8 @@ class DiscordNotifier:
         position_size: Dict,
         score: int,
         reason: str,
-        rr: float = 0.0
+        rr: float = 0.0,
+        execution_costs: Dict = None
     ) -> bool:
         """Send new signal notification"""
         try:
@@ -52,6 +53,7 @@ class DiscordNotifier:
             
             # Determine color based on direction
             color = 0x00FF00 if direction == 'long' else 0xFF0000  # Green for long, Red for short
+            execution_costs = execution_costs or {}
             
             # Create embed
             embed = {
@@ -114,6 +116,15 @@ class DiscordNotifier:
                 },
                 "timestamp": datetime.now().isoformat()
             }
+            embed["fields"].append({
+                "name": "Execution Costs",
+                "value": (
+                    f"Entry fee: ${execution_costs.get('entry_fee', 0):.2f}\n"
+                    f"Spread cost: ${execution_costs.get('entry_spread_cost', 0):.2f}\n"
+                    f"Total fees: ${execution_costs.get('total_fees', 0):.2f}"
+                ),
+                "inline": False
+            })
             
             payload = {
                 "embeds": [embed]
@@ -144,7 +155,11 @@ class DiscordNotifier:
         new_stop_loss: float = None,
         contracts_remaining: float = None,
         contracts_closed: float = None,
-        close_percent: float = None
+        close_percent: float = None,
+        exit_fee: float = None,
+        total_fees: float = None,
+        spread_cost: float = None,
+        total_spread_cost: float = None
     ) -> bool:
         """Send TP hit notification"""
         try:
@@ -182,6 +197,16 @@ class DiscordNotifier:
                     "inline": True
                 }
             ]
+            fields.append({
+                "name": "Fees",
+                "value": f"Exit: ${exit_fee or 0:.2f}\nTotal: ${total_fees or 0:.2f}",
+                "inline": True
+            })
+            fields.append({
+                "name": "Spread Cost",
+                "value": f"Exit: ${spread_cost or 0:.2f}\nTotal: ${total_spread_cost or 0:.2f}",
+                "inline": True
+            })
             
             # Add new stop loss if it was adjusted
             if new_stop_loss is not None:
@@ -217,7 +242,11 @@ class DiscordNotifier:
         price: float,
         total_pnl: float,
         contracts_closed: float = None,
-        remaining_percent: float = None
+        remaining_percent: float = None,
+        exit_fee: float = None,
+        total_fees: float = None,
+        spread_cost: float = None,
+        total_spread_cost: float = None
     ) -> bool:
         """Send stop loss hit notification"""
         try:
@@ -245,6 +274,16 @@ class DiscordNotifier:
                     "inline": False
                 }
             ]
+            fields.append({
+                "name": "Fees",
+                "value": f"Exit: ${exit_fee or 0:.2f}\nTotal: ${total_fees or 0:.2f}",
+                "inline": True
+            })
+            fields.append({
+                "name": "Spread Cost",
+                "value": f"Exit: ${spread_cost or 0:.2f}\nTotal: ${total_spread_cost or 0:.2f}",
+                "inline": True
+            })
             
             embed = {
                 "title": f"🛑 STOP LOSS HIT - {symbol}",

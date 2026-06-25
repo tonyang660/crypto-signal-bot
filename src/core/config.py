@@ -14,6 +14,7 @@ class Config:
     
     # Discord
     DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
+    ACTIVE_POSITIONS_WEBHOOK_URL = os.getenv('ACTIVE_POSITIONS_WEBHOOK_URL')
     
     # ==================== TIMEZONE ====================
     # Timezone for logs and reports (defaults to US Eastern)
@@ -146,6 +147,15 @@ class Config:
     SIGNAL_THRESHOLD_NORMAL = 70
     SIGNAL_THRESHOLD_DRAWDOWN = 85
     SIGNAL_THRESHOLD_HOT_STREAK = 65
+
+    # Execution cost model for paper/live signal PnL tracking.
+    # Percent values use exchange-style percent notation: 0.02 = 0.02%.
+    MAKER_FEE_PERCENT = float(os.getenv('MAKER_FEE_PERCENT', '0.02') or 0.02)
+    TAKER_FEE_PERCENT = float(os.getenv('TAKER_FEE_PERCENT', '0.06') or 0.06)
+    MIN_SPREAD_PERCENT = float(os.getenv('MIN_SPREAD_PERCENT', '0.02') or 0.02)
+    ENTRY_ORDER_TYPE = os.getenv('ENTRY_ORDER_TYPE', 'maker').lower()
+    TAKE_PROFIT_ORDER_TYPE = os.getenv('TAKE_PROFIT_ORDER_TYPE', 'maker').lower()
+    STOP_LOSS_ORDER_TYPE = os.getenv('STOP_LOSS_ORDER_TYPE', 'taker').lower()
     
     # BTC-specific thresholds (BTC needs higher quality due to high volatility)
     BTC_SCORE_THRESHOLD = 80  # Higher quality required for BTC

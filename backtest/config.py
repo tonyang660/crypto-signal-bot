@@ -27,8 +27,9 @@ class BacktestConfig:
     # ==================== EXECUTION SIMULATION ====================
     # Realistic execution parameters
     SLIPPAGE_PERCENT = 0.05  # 0.05% slippage on market orders
-    TAKER_FEE = 0.06  # 0.055% Bitget taker fee (market orders)
-    MAKER_FEE = 0.02   # 0.02% Bitget maker fee (limit orders)
+    TAKER_FEE = Config.TAKER_FEE_PERCENT
+    MAKER_FEE = Config.MAKER_FEE_PERCENT
+    MIN_SPREAD_PERCENT = Config.MIN_SPREAD_PERCENT
     
     # Order execution assumptions
     USE_MARKET_ORDERS = True  # True = market (guaranteed fill, more slippage)
