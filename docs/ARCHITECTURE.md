@@ -129,6 +129,8 @@ The largest module is `backtest/engine.py`, which is currently over 1,200 lines.
 
 The repository also contains `quick_backtest.py` at the root. It imports `backtest.data_fetcher.HistoricalDataFetcher`, but no matching `backtest/data_fetcher.py` implementation exists in the current repository. Treat `quick_backtest.py` as a broken or obsolete utility until its intended dependency is identified.
 
+Dev Note: Backtesting will currently be marked as out-of-date, in future considerations, it will be revamped.
+
 ## Persistent state
 
 Current runtime state is stored under `data/`, including active signals, signal history, trade history, and performance data.
